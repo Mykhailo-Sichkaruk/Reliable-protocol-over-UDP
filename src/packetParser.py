@@ -32,11 +32,11 @@ def parse_MRP(data: bytes) -> MRP:
     """Parse bytes into MRP"""
     packet_type = parse_packet_type(data[0])
     length = parse_length(data[0:2])
-    checksum = int(data[2:6])
+    checksum = int.from_bytes(data[2:6], "big")
     unbroken = check_integrity(data)
     payload = data[8:]
-    packet_number = int(data[7:8])
-    file_id = int(data[6:7])
+    packet_number = int.from_bytes(data[7:8], "big")
+    file_id = int.from_bytes(data[6:7], "big")
 
     return MRP(packet_type, length, checksum, packet_number, file_id, payload, unbroken)
 
@@ -54,7 +54,7 @@ def parse_length(data: bytes) -> int:
 def check_integrity(data: bytes) -> bool:
     """Check if data is corrupted"""
     packet = data[0:2] + data[6:]
-    checksum = int(data[2:6])
+    checksum = int.from_bytes(data[2:6], "big")
     packet_checksum = crc32(packet)
 
     return checksum == packet_checksum
@@ -65,12 +65,11 @@ def create_packet(packet_type: PacketType, payload=b"", packet_number=0, file_id
     length = len(payload)
 
     header = int(length | (packet_type.value << 12)).to_bytes(2, "big")
-    print(f"header: {header.hex()}")
+    print(f"{packet_type} N:{packet_number} F:{file_id} L:{length} P:{payload.hex()}")
     verify = header + \
         packet_number.to_bytes(1, "big") + file_id.to_bytes(1, "big")
 
     checksum = crc32(verify).to_bytes(4, "big")
-    print(f"checksum: {checksum.hex()}")
 
     return header + checksum + packet_number.to_bytes(1, "big") + file_id.to_bytes(1, "big") + payload
 
