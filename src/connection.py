@@ -1,3 +1,7 @@
+from random import randint, random
+from socket import SocketType
+from fileAdapter import FileAdapter
+from fileTransfer import Direction, FileTransfer
 from collections import deque
 from time import time
 from packetParser import MRP, PacketType, create_packet
@@ -19,7 +23,7 @@ class ConnectionState(Enum):
 
 
 class Connection:
-    def __init__(self, socket, ip, port, packet: MRP | None = None):
+    def __init__(self, socket: SocketType, ip, port, packet: MRP | None = None):
         self.keep_alive_time = 10  # seconds
         self.socket = socket
         self.ip = ip
@@ -29,7 +33,7 @@ class Connection:
         self.transfers = {}
         self.previous_state = ConnectionState.Disconnected
         self.last_packet_time = time()
-        self.files = {}
+        self.transfers: dict[int, FileTransfer] = {}
 
         self.will_send = True
         self.will_receive = True
@@ -49,6 +53,7 @@ class Connection:
         self.state = ConnectionState.Connect_wait_confirm
 
     def init_handshake(self):
+        print(f"self.ip: {self.ip}, self.port: {self.port}")
         self.socket.sendto(create_packet(
             PacketType.OpenConnection, b"", 0, 0), (self.ip, self.port))
         self.state = ConnectionState.Connect_wait_init
@@ -66,14 +71,19 @@ class Connection:
             self.wait_init()
         elif self.state == ConnectionState.Disconnect_wait_confirm:
             self.disconnect_wait_confirm()
+        else:
+            # Run all transfers
+            for transfer in self.transfers.values():
+                transfer.run()
 
-    def disconnect_wait_confirm_(self):
+    def disconnect_wait_confirm(self):
         packet = self.find_packet_type(PacketType.Confirm)
         if packet != None:
             if packet.packet_type == PacketType.Confirm:
                 self.state = ConnectionState.Disconnected
 
     def wait_init(self):
+        print("Waiting for init")
         packet = self.find_packet_type(PacketType.OpenConnection)
         if packet != None:
             if packet.packet_type == PacketType.OpenConnection:
@@ -97,9 +107,7 @@ class Connection:
             if packet.packet_type == packet_type:
                 return packet
 
-    def handle_discronnected(self):
-
-    def add_packet(self, packet):
+    def add_packet(self, packet: MRP):
         self.last_packet_time = time()
         # If packet is Connect/Disconnect/KeepAlive related - add it to the queque
         if packet.packet_type == PacketType.CloseConnection:
@@ -121,3 +129,18 @@ class Connection:
         elif packet.packet_type == PacketType.ConfirmKeepAlive:
             self.packet_queque.append(packet)
         else:
+            file_id = self.transfers.get(packet.file_id)
+            if file_id == None:
+                file_received = FileAdapter(
+                    packet.file_id, False, packet.file_id, fragment_size=100, window_size=8)
+                self.transfers[packet.file_id] = FileTransfer(
+                    Direction.Receive, file_received, self.send_packet, packet)
+
+    def send_packet(self, packet: bytes):
+        self.socket.sendto(packet, (self.ip, self.port))
+
+    def send_file(self, file: FileAdapter):
+        file = FileAdapter(randint(1, 255), True, file.file_name,
+                           fragment_size=100, window_size=8)
+        self.transfers[file.id] = FileTransfer(
+            Direction.Send, file, self.send_packet)
