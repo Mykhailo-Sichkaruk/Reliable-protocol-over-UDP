@@ -1,5 +1,5 @@
 import shutil
-from server import Server
+from socket import Server
 
 
 def get_file_to_send():
@@ -28,12 +28,10 @@ def get_server_credentials():
 
 def main():
     try:
-        file_name = get_file_to_send()
-        server_ip, server_port = get_server_credentials()
+        server_ip, server_port = "localhost", 1000
         server = Server(server_ip, server_port)
-        ip, port = get_client_to_connect()
-        server.send_file(file_name, ip, port)
         server.start()
+
     except KeyboardInterrupt:
         print("Server stopped by user")
         exit()
