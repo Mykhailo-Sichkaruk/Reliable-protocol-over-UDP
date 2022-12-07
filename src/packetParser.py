@@ -14,74 +14,56 @@ class PacketType(Enum):
     ConfirmOpenConnection = 6
     ConfirmCloseConnection = 7
     ConfirmKeepAlive = 8
+    ConfirmData = 9
+    ConfirmMessage = 10
+    Init_file_transfer = 11
+    ConfirmInit_file_transfer = 12
 
 
 @dataclass
 class MRP:
     """Mykhailo's reliable protocol"""
-    packet_type: PacketType
-    length: int
-    checksum: int
-    packet_number: int
+    type: PacketType
     file_id: int
+    number_in_window: int
+    window_number: int
+    checksum: int
     payload: bytes
-    unbroken: bool
+    unbroken: bool = True
 
 
-def parse_MRP(data: bytes) -> MRP:
+def parse_first_byte(data: int):
+    packet_type = PacketType(data >> 4)
+    file_id = data & 0b00001111
+
+    return packet_type, file_id
+
+
+def parse_packet(data: bytes) -> MRP:
     """Parse bytes into MRP"""
-    packet_type = parse_packet_type(data[0])
-    length = parse_length(data[0:2])
-    checksum = int.from_bytes(data[2:6], "big")
-    unbroken = check_integrity(data)
-    payload = data[8:]
-    packet_number = int.from_bytes(data[6:7], "big")
-    file_id = int.from_bytes(data[7:8], "big")
+    packet_type, file_id = parse_first_byte(data[0])
+    packet_number_in_window = data[1]
+    window_number = int.from_bytes(data[2:4])
+    checksum = int.from_bytes(data[4:8], "big")
+    payload = data[7:]
+    print(f"<< Packet type: {packet_type}")
 
-    return MRP(packet_type, length, checksum, packet_number, file_id, payload, unbroken)
-
-
-def parse_packet_type(data: int) -> PacketType:
-    """Parse header bytes into PacketType"""
-    return PacketType(data >> 4)
+    return MRP(packet_type, file_id, packet_number_in_window, window_number, checksum, payload)
 
 
-def parse_length(data: bytes) -> int:
-    """Parse header bytes into length"""
-    return int(data[0] << 8 | data[1])
+def check_checksum(data: bytes) -> bool:
+    """Check if checksum is correct"""
+    checksum = int.from_bytes(data[4:8], "big")
+    return checksum == crc32(data[0:4] + data[8:])
 
 
-def check_integrity(data: bytes) -> bool:
-    """Check if data is corrupted"""
-    packet = data[0:2] + data[6:]
-    checksum = int.from_bytes(data[2:6], "big")
-    packet_checksum = crc32(packet)
+def create_packet(type: PacketType, file_id: int, number_in_window: int, window_number: int, payload: bytes) -> bytes:
+    """Create MRP packet"""
+    first_byte = (type.value << 4) + file_id
+    packet_number_in_window = number_in_window.to_bytes(1, "big")
+    packet_window_number = window_number.to_bytes(2, "big")
+    checksum = crc32(bytes([first_byte]) + packet_number_in_window +
+                     packet_window_number + payload).to_bytes(4, "big")
 
-    return checksum == packet_checksum
-
-
-def create_packet(packet_type: PacketType, payload=b"", packet_number=0, file_id=0) -> bytes:
-    """Create MRP packet from data"""
-    length = len(payload)
-
-    header = int(length | (packet_type.value << 12)).to_bytes(2, "big")
-    print(f"{packet_type} N:{packet_number} F:{file_id} L:{length} P:{payload}")
-    verify = header + \
-        packet_number.to_bytes(1, "big") + file_id.to_bytes(1, "big")
-
-    checksum = crc32(verify).to_bytes(4, "big")
-
-    return header + checksum + packet_number.to_bytes(1, "big") + file_id.to_bytes(1, "big") + payload
-
-
-def test_create_packet():
-    print(create_packet(PacketType.Message, b"Hello, world"))
-    # print(Bits(bytes=create_packet(PacketType.Message, b"Hello, world")))
-
-
-def test_checksum():
-    packet = create_packet(PacketType.Message, b"Hello, world")
-    print(check_integrity(packet))
-
-
-test_checksum()
+    print(f">> Packet type: {type}")
+    return bytes([first_byte]) + packet_number_in_window + packet_window_number + checksum + payload
