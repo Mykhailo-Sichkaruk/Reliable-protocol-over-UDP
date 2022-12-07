@@ -28,8 +28,11 @@ class Server:
         while True:
             events = self.selector.select(timeout=None)
             for key, mask in events:
-                data, (ip, port) = key.fileobj.recvfrom(1500)
-                self.dispatch_packet(parse_MRP(data), ip, port)
+                try:
+                    data, (ip, port) = key.fileobj.recvfrom(1500)
+                    self.dispatch_packet(parse_MRP(data), ip, port)
+                except Exception as e:
+                    print(e)
 
             for connection in self.connections.values():
                 connection.run()
@@ -37,8 +40,7 @@ class Server:
     def send_file(self, file_name, ip, port):
         self.connections[f"{ip}:{port}"] = Connection(
             self.socket, ip, port)
-        self.connections[f"{ip}:{port}"].send_file(
-            FileAdapter(1, True, file_name, 1000))
+        self.connections[f"{ip}:{port}"].send_file(file_name)
 
     def dispatch_packet(self, packet: MRP, ip, port):
         if self.connections.get(f"{ip}:{port}") is None:

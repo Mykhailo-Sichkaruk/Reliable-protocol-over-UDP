@@ -35,8 +35,8 @@ def parse_MRP(data: bytes) -> MRP:
     checksum = int.from_bytes(data[2:6], "big")
     unbroken = check_integrity(data)
     payload = data[8:]
-    packet_number = int.from_bytes(data[7:8], "big")
-    file_id = int.from_bytes(data[6:7], "big")
+    packet_number = int.from_bytes(data[6:7], "big")
+    file_id = int.from_bytes(data[7:8], "big")
 
     return MRP(packet_type, length, checksum, packet_number, file_id, payload, unbroken)
 
@@ -65,7 +65,7 @@ def create_packet(packet_type: PacketType, payload=b"", packet_number=0, file_id
     length = len(payload)
 
     header = int(length | (packet_type.value << 12)).to_bytes(2, "big")
-    print(f"{packet_type} N:{packet_number} F:{file_id} L:{length} P:{payload.hex()}")
+    print(f"{packet_type} N:{packet_number} F:{file_id} L:{length} P:{payload}")
     verify = header + \
         packet_number.to_bytes(1, "big") + file_id.to_bytes(1, "big")
 

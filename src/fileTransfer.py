@@ -32,14 +32,15 @@ class FileTransfer:
         self.packet_queue: deque[MRP] = deque()
         self.direction = direction
         self.file = file
-        self.window_size = 0
+        self.window_size = 8
         self.current_window: list[bytes] | None = []
         self.last_packet_time = time()
         self.window_first_packet_time = time()
         self.last_packet = None
 
-        if packet == None:
-            self.state = FTState.Wait_next_window
+        if packet != None and self.direction == Direction.Send:
+            self.packet_queue.append(packet)
+            self.state = FTState.Wait_window
         else:
             self.send_next_window()
             self.state = FTState.Wait_window_confirm
@@ -95,10 +96,13 @@ class FileTransfer:
                       fragment, index, self.file.id))
 
     def run_receive(self):
+        print(f"Running receive with state: {self.state}")
         if self.state == FTState.Wait_window:
             self.wait_window()
         elif self.state == FTState.Wait_next_window:
             self.wait_next_window()
+        else:
+            raise Exception(f"Invalid state: {self.state}")
 
     def wait_next_window(self):
         if self.last_packet_time + WINDOW_WAIT_TIME < time():
@@ -107,6 +111,7 @@ class FileTransfer:
 
     def wait_window(self):
         # Check if window is full
+        print("Waiting for window")
         if len(self.packet_queue) == self.window_size:
             window = list(self.packet_queue.copy())
             # Sort packets by index

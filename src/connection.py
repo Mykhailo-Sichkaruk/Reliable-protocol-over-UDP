@@ -53,7 +53,6 @@ class Connection:
         self.state = ConnectionState.Connect_wait_confirm
 
     def init_handshake(self):
-        print(f"self.ip: {self.ip}, self.port: {self.port}")
         self.socket.sendto(create_packet(
             PacketType.OpenConnection, b"", 0, 0), (self.ip, self.port))
         self.state = ConnectionState.Connect_wait_init
@@ -110,6 +109,8 @@ class Connection:
     def add_packet(self, packet: MRP):
         self.last_packet_time = time()
         # If packet is Connect/Disconnect/KeepAlive related - add it to the queque
+        print(
+            f"<< {packet.packet_type} N:{packet.packet_number} F:{packet.file_id}: {packet.payload}")
         if packet.packet_type == PacketType.CloseConnection:
             self.will_receive = False
             self.socket.sendto(create_packet(
@@ -132,15 +133,17 @@ class Connection:
             file_id = self.transfers.get(packet.file_id)
             if file_id == None:
                 file_received = FileAdapter(
-                    packet.file_id, False, packet.file_id, fragment_size=100, window_size=8)
+                    packet.file_id, False, str(packet.file_id), fragment_size=100, window_size=8)
                 self.transfers[packet.file_id] = FileTransfer(
                     Direction.Receive, file_received, self.send_packet, packet)
+            else:
+                self.transfers[packet.file_id].add_packet(packet)
 
     def send_packet(self, packet: bytes):
         self.socket.sendto(packet, (self.ip, self.port))
 
-    def send_file(self, file: FileAdapter):
-        file = FileAdapter(randint(1, 255), True, file.file_name,
+    def send_file(self, file_name: str):
+        file = FileAdapter(randint(1, 255), True, file_name,
                            fragment_size=100, window_size=8)
         self.transfers[file.id] = FileTransfer(
             Direction.Send, file, self.send_packet)
