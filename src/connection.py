@@ -1,10 +1,14 @@
 from collections import deque
 from enum import Enum
+import logging
 from socket import SocketType
-from time import time
+from services import time_ms
 from packetParser import MRP, PacketType, create_packet
+from receiveFile import ReceiveFile
+from sendFile import SendFile
 
 ACK_TIMEOUT = 100  # ms
+log = logging.getLogger(__name__)
 
 
 class ConnState(Enum):
@@ -22,22 +26,21 @@ class ConnState(Enum):
     Receive_Wait_Send_Confirm = 7
 
 
-def time_ms() -> int:
-    return int(time() * 1000)
-
-
 class Conn:
-    def __init__(self, socket: SocketType, ip: str, port: int, window_len: int, frame_len: int) -> None:
+    def __init__(self, socket: SocketType, ip: str, port: int, window_size: int, frame_len: int) -> None:
         self.socket = socket
         self.destination: tuple[str, int] = (ip, port)
         self.state = ConnState.Disconnected
-        self.receive_awailable = False
-        self.send_awailable = False
-        self.window_len = window_len
-        self.frame_len = frame_len
-        self.transfers: dict[int, Transfer] = {}
-        self.last_packet_time = time_ms()  # ms
+        self.receive_awailable: bool = False
+        self.send_awailable: bool = False
+        self.window_size: int = window_size
+        self.frame_len: int = frame_len
+        self.transfers: dict[int, ReceiveFile | SendFile] = {}
+        self.last_packet_time: int = time_ms()  # ms
         self.packet_queue: deque[MRP] = deque()
+        self.last_transfer_id: int = 0
+
+        log.critical(f"Connection created with {ip}:{port}")
 
     def run(self):
         if self.state == ConnState.Disconnected:
@@ -49,6 +52,8 @@ class Conn:
         else:
             for transfer in self.transfers.values():
                 transfer.run()
+
+        return self.state != ConnState.Disconnected
 
     def handle_wait_send_awailable(self):
         # If there are no packets for a long time, then resend the send confirmation
@@ -77,6 +82,9 @@ class Conn:
     def add_packet(self, packet: MRP):
         self.last_packet_time = time_ms()
 
+        if not packet.unbroken:
+            return
+
         if packet.type == PacketType.OpenConnection:
             if self.state == ConnState.Disconnected:
                 self.send(create_packet(
@@ -91,7 +99,7 @@ class Conn:
         elif self.state == ConnState.Wait_Send_awailable:
             self.state = ConnState.Send_awailable
             self.dispatch_packet(packet)
-        elif self.state == ConnState.Receive_awailable or self.state == ConnState.Send_Receive_awailable:
+        elif self.state == ConnState.Receive_awailable or self.state == ConnState.Send_Receive_awailable or self.state == ConnState.Send_awailable:
             self.dispatch_packet(packet)
         else:
             raise Exception(
@@ -99,17 +107,19 @@ class Conn:
 
     def dispatch_packet(self, packet: MRP):
         if packet.file_id not in self.transfers:
-            pass
-            # self.transfers[packet.file_id] = []
+            self.transfers[packet.file_id] = ReceiveFile(
+                self.send, self.window_size, self.frame_len, packet)
         else:
             self.transfers[packet.file_id].add_packet(packet)
 
     def send(self, data: bytes):
         self.socket.sendto(data, self.destination)
 
-    def send_file(self, file_path: str):
+    def send_file(self, file_path: str, frame_len: int, window_len: int):
         if self.state == ConnState.Send_awailable or self.state == ConnState.Send_Receive_awailable:
-            # Create transfer
-            pass
+            self.transfers[self.last_transfer_id] = SendFile(
+                self.last_transfer_id, self.send, file_path, window_len, frame_len)
         else:
             self.open_connection()
+            self.transfers[self.last_transfer_id] = SendFile(
+                self.last_transfer_id, self.send, file_path, window_len, frame_len)
