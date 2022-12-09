@@ -1,4 +1,3 @@
-from bitstring import Bits
 from zlib import crc32
 from dataclasses import dataclass
 from enum import Enum
@@ -29,7 +28,7 @@ class MRP:
     window_number: int
     checksum: int
     payload: bytes
-    unbroken: bool = True
+    unbroken: bool
 
 
 def parse_first_byte(data: int):
@@ -45,10 +44,12 @@ def parse_packet(data: bytes) -> MRP:
     packet_number_in_window = data[1]
     window_number = int.from_bytes(data[2:4])
     checksum = int.from_bytes(data[4:8], "big")
-    payload = data[7:]
-    print(f"<< Packet type: {packet_type}")
+    payload = data[8:]
+    unbroken = check_checksum(data)
+    # print(
+    #     f"<< {packet_type}|{file_id}|{packet_number_in_window}|{window_number}:{payload}")
 
-    return MRP(packet_type, file_id, packet_number_in_window, window_number, checksum, payload)
+    return MRP(packet_type, file_id, packet_number_in_window, window_number, checksum, payload, unbroken)
 
 
 def check_checksum(data: bytes) -> bool:
@@ -65,5 +66,6 @@ def create_packet(type: PacketType, file_id: int, number_in_window: int, window_
     checksum = crc32(bytes([first_byte]) + packet_number_in_window +
                      packet_window_number + payload).to_bytes(4, "big")
 
-    print(f">> Packet type: {type}")
+    # print(
+    #     f">> {type}|{file_id}|{number_in_window}|{window_number}:{payload}")
     return bytes([first_byte]) + packet_number_in_window + packet_window_number + checksum + payload
