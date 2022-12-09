@@ -1,5 +1,8 @@
+import logging
 import shutil
-from socket import Server
+from MainServer import Server
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 def get_file_to_send():
@@ -28,11 +31,11 @@ def get_server_credentials():
 
 def main():
     try:
-        file_name = "test.txt"
+        file_name = "./src/save/matrix.jpg"
         server_ip, server_port = "localhost", 9999
         server = Server(server_ip, server_port)
         ip, port = "127.0.0.1", 1000
-        server.send_file(file_name, ip, port)
+        server.send_file(file_name, ip, port, 16, 2)
         server.start()
     except KeyboardInterrupt:
         print("Server stopped by user")
