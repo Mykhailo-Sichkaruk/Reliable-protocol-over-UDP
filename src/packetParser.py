@@ -25,6 +25,7 @@ class MRP:
     type: PacketType
     file_id: int
     number_in_window: int
+    """Number of the packet inside the window from 0 to window_size - 1"""
     window_number: int
     checksum: int
     payload: bytes
@@ -32,7 +33,11 @@ class MRP:
 
 
 def parse_first_byte(data: int):
-    packet_type = PacketType(data >> 4)
+    packet_type_number = data >> 4
+    if packet_type_number < 0 or packet_type_number > 12:
+        packet_type_number = 0
+    packet_type = PacketType(packet_type_number)
+
     file_id = data & 0b00001111
 
     return packet_type, file_id
@@ -46,8 +51,6 @@ def parse_packet(data: bytes) -> MRP:
     checksum = int.from_bytes(data[4:8], "big")
     payload = data[8:]
     unbroken = check_checksum(data)
-    # print(
-    #     f"<< {packet_type}|{file_id}|{packet_number_in_window}|{window_number}:{payload}")
 
     return MRP(packet_type, file_id, packet_number_in_window, window_number, checksum, payload, unbroken)
 
@@ -66,6 +69,4 @@ def create_packet(type: PacketType, file_id: int, number_in_window: int, window_
     checksum = crc32(bytes([first_byte]) + packet_number_in_window +
                      packet_window_number + payload).to_bytes(4, "big")
 
-    # print(
-    #     f">> {type}|{file_id}|{number_in_window}|{window_number}:{payload}")
     return bytes([first_byte]) + packet_number_in_window + packet_window_number + checksum + payload
