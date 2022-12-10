@@ -43,9 +43,7 @@ class Conn:
         log.critical(f"Connection created with {ip}:{port}")
 
     def run(self):
-        if self.state == ConnState.Disconnected:
-            pass
-        elif self.state == ConnState.Wait_Send_Confirm:
+        if self.state == ConnState.Wait_Send_Confirm:
             self.handle_send_confirm()
         elif self.state == ConnState.Wait_Send_awailable or self.state == ConnState.Receive_Wait_Send_awailable:
             self.handle_wait_send_awailable()
@@ -108,7 +106,7 @@ class Conn:
     def dispatch_packet(self, packet: MRP):
         if packet.file_id not in self.transfers:
             self.transfers[packet.file_id] = ReceiveFile(
-                self.send, self.window_size, self.frame_len, packet)
+                self.send, packet)
         else:
             self.transfers[packet.file_id].add_packet(packet)
 

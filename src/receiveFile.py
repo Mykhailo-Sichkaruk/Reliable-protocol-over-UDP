@@ -1,3 +1,4 @@
+from hashlib import md5
 from bitstring import BitArray
 from services import time_ms
 from enum import Enum
@@ -7,7 +8,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-WINDOW_TIMEOUT = 50  # ms
+WINDOW_TIMEOUT = 500  # ms
 
 
 class ReceiveState(Enum):
@@ -17,10 +18,10 @@ class ReceiveState(Enum):
 
 
 class ReceiveFile:
-    def __init__(self, self_function_injection: Callable[[bytes], None], window_size: int, fragment_len: int, packet: MRP | None = None) -> None:
+    def __init__(self, self_function_injection: Callable[[bytes], None], packet: MRP | None = None) -> None:
         self.send = self_function_injection
-        self.window_size = window_size
-        self.fragment_len = fragment_len
+        self.window_size: int = 8
+        self.fragment_len: int = 1
         self.init_data = b""
         self.init_data_end_window: int = 0
         self.window: list[MRP] = []
@@ -43,8 +44,6 @@ class ReceiveFile:
     def run(self):
         if (self.state == ReceiveState.Wait_window
                 and self.last_packet_time + WINDOW_TIMEOUT < time_ms()):
-            log.warn(
-                f"Window timeout: last packet received {time_ms() - self.last_packet_time} ms ago")
             if self.received_bytes < self.file_len:
                 # Resend the last window
                 self.last_packet_time = time_ms()
@@ -55,11 +54,19 @@ class ReceiveFile:
         return self.state == ReceiveState.End_transfer
 
     def end_transfer(self):
+        end_time = time_ms()
+        self.file.seek(0)
+        hash = md5(self.file.read()).hexdigest()
         log.critical(
-            f"{self.file_path} Transfer ended successfully \n\
-                \tTime: {time_ms() - self.start_time} ms \n\
-                \tFile size: {self.file_len} b \n\
-                \tAverage speed {int(self.file_len / (time_ms() - self.start_time) * 1000) } B/ms")
+            f"Transfer ended successfully \n\
+                \tFile: {self.file_path} \n\
+                \tFragment size: {self.fragment_len} B \n\
+                \tWindow size: {self.window_size} \n\
+                \tMD5 hash expected: {self.md5_hash_expected} \n\
+                \tMD5 Hash received: {hash} \n\n\
+                \tTime: {int((time_ms() - self.start_time) / 1000)}s \n\
+                \tFile size: {self.file_len} B \n\
+                \tAverage speed {int(self.file_len / (end_time - self.start_time)) } KiB/s")
         self.file.close()
         self.state = ReceiveState.End_transfer
 
@@ -74,7 +81,8 @@ class ReceiveFile:
                 data = self.parse_init_data(self.init_data)
                 self.file_len = int(data["file_len"])
                 self.file_path = self.rename_file(data["file_path"])
-                self.file = open(self.file_path, "wb")
+                self.md5_hash_expected: str = data["md5_hash"].hex()
+                self.file = open(self.file_path, "wb+")
             else:
                 # Receive file data/
                 self.handle_file_window()
@@ -96,7 +104,7 @@ class ReceiveFile:
             self.received_bytes += len(packet.payload)
 
         log.debug(
-            f"{self.window_number}: {self.received_bytes}/{self.file_len}")
+            f"F:{self.id} W:{self.window_number}: {round((self.received_bytes / self.file_len) * 100, 2)}%")
         # Send the confirm
         confirm_payload = ((2 ** self.window_size) -
                            1).to_bytes(self.window_size // 8, "big")
@@ -136,48 +144,47 @@ class ReceiveFile:
                       self.id, 0, self.window_number - 1, self.last_window_confirm))
             log.critical(
                 f"Resend confirm {self.window_number}: {self.last_window_confirm}")
-            return
+        else:
+            self.window.sort(key=lambda packet: packet.number_in_window)
 
-        self.window.sort(key=lambda packet: packet.number_in_window)
-
-        payload = self.get_sum_confirm()
-        packet = create_packet(
-            PacketType.ConfirmData, self.id, 0, self.window_number, payload)
-        self.send(packet)
-
-        log.info(f"Resend window {self.window_number}: {payload}")
+            payload = self.get_sum_confirm()
+            packet = create_packet(
+                PacketType.ConfirmData, self.id, 0, self.window_number, payload)
+            self.send(packet)
 
     def get_sum_confirm(self) -> bytes:
         result = 0
-        number_of_lost_packets = self.window_size
         for packet in self.window:
-            number_of_lost_packets -= 1
-            result += packet.number_in_window ** 2
+            result |= 1 << (self.window_size - packet.number_in_window - 1)
         let = result.to_bytes(self.window_size // 8, "big")
         if len(let) != self.window_size // 8:
             raise Exception("Wrong size")
 
-        print(f"Lost packets: {number_of_lost_packets}")
         return let
 
     def add_packet(self, packet: MRP):
-        self.last_packet_time = time_ms()
         if self.state == ReceiveState.Wait_init and packet.type == PacketType.Init_file_transfer:
             self.init_data_end_window = int.from_bytes(
                 packet.payload, "big")
             self.id = packet.file_id
+            self.window_size = packet.number_in_window
+            self.fragment_len = packet.window_number
             self.state = ReceiveState.Wait_window
+            log.info(f"Init transfer, time: {time_ms()}")
             self.send(create_packet(
                 PacketType.ConfirmInit_file_transfer, self.id, 0, 0, b""))
         elif self.state == ReceiveState.Wait_window:
             self.window.append(packet)
             self.handle_window()
+        self.last_packet_time = time_ms()
 
     def parse_init_data(self, data: bytes) -> dict:
         # Parse the init data
+        log.debug(f"Init data: {data}")
         file_len = int.from_bytes(data[:8], "big")
-        file_path = data[8:].decode("utf-8")
-        return {"file_len": file_len, "file_path": file_path}
+        md5_hash = data[8:24]
+        file_path = data[24:].decode("utf-8")
+        return {"file_len": file_len, "md5_hash": md5_hash, "file_path": file_path}
 
     def rename_file(self, new_name: str):
         name, postfix = new_name.split(

@@ -1,11 +1,12 @@
-import os
-from bitstring import BitArray
 from math import ceil
 from enum import Enum
 from io import SEEK_END
 from typing import Callable
+from initData import InitData
 from packetParser import MRP, PacketType, create_packet
 import logging
+
+from services import time_ms
 
 log = logging.getLogger(__name__)
 
@@ -32,26 +33,20 @@ class SendFile:
         self.init_last_window = 0
         self.send = send
         self.is_inited: bool = False
-
-        log.critical(f"Sending file: {file_path}")
+        self.md5_hash: bytes
 
     def run(self):
         if not self.is_inited:
             self.init()
             self.is_inited = True
-        else:
-            if self.state == SendState.Wait_init_confirm:
-                pass
-            elif self.state == SendState.Sending_window:
-                pass
 
         return self.state == SendState.End_transfer
 
     def init(self):
-        self.send_init_data()
         self.file = open(self.file_path, "rb")
         self.__file_size = self.file.seek(0, SEEK_END)
         self.file.seek(0)
+        self.send_init_data()
 
     def get_window(self):
        # While cursore isnt at the end of the file, yield a window of data,
@@ -72,7 +67,6 @@ class SendFile:
         elif self.file.tell() != self.__file_size:
             result = [self.file.read(self.fragment_len)
                       for _ in range(self.window_size)]
-            log.debug(f"{self.window_number}: {self.file.tell()}")
 
             return result
         else:
@@ -80,7 +74,9 @@ class SendFile:
 
     def send_init_data(self):
         # Get the init data
-        init_data = InitData(self.file_path)
+        init_data: InitData = InitData(self.file_path)
+        self.md5_hash = init_data.md5_hash
+        self.init_data = init_data.bytes
 
         # Length of the JSON object in bytes
         init_data_len = len(init_data)
@@ -92,21 +88,25 @@ class SendFile:
         if window_amount > 255:
             raise Exception("Too many windows needed to send init data")
 
-        self.init_data = init_data.bytes
         self.init_last_window = window_amount - 1
-
         # Send init packet with the amount of windows needed to send the JSON object
+        log.info(f"Init transfer, time: {time_ms()}")
         self.send(create_packet(
-            PacketType.Init_file_transfer, self.id, 0, 0, self.init_last_window.to_bytes(1, "big")))
+            PacketType.Init_file_transfer, self.id, self.window_size, self.fragment_len, self.init_last_window.to_bytes(1, "big")))
 
     def send_next_window(self):
         # Update window
         self.send_window = self.get_window()
         if self.send_window == None:
             self.state = SendState.End_transfer
+            log.critical(f"File sent successfully\n\
+                        \tFile: {self.file_path}\n\
+                        \tFragment size: {self.fragment_len}\n\
+                        \tWindow size: {self.window_size}\n\
+                        \tMD5 hash: {self.md5_hash.hex()}\n\n\
+                        \tFile size: {self.__file_size}")
             # Send the window
         else:
-            log.critical(f"Sending window {self.window_number}")
             for i, packet in enumerate(self.send_window):
                 self.send(create_packet(PacketType.Data, self.id,
                                         i, self.window_number, packet))
@@ -119,8 +119,6 @@ class SendFile:
                 self.state = SendState.Wait_window_confirm
         elif self.state == SendState.Wait_window_confirm:
             if packet.type == PacketType.ConfirmData:
-                log.info(
-                    f"Window {self.window_number} confirmed: {packet.payload}")
                 self.handle_window_confirm(packet)
 
     def handle_window_confirm(self, packet: MRP):
@@ -131,46 +129,24 @@ class SendFile:
         if window_number == self.window_number:
             # Check if it confirms the whole window
             is_window_full = True
-            confirm = packet.payload
+            confirm: bytes = packet.payload
             # Check summarized confirm
-            if len(confirm)*8 != self.window_size:
-                raise Exception("Summarized confirm != window size")
+            # Every bit in the confirm is a packet in the window, 1 = received, 0 = not received
+            # Check if all packets are received and resend the lost ones
+            confirm_int = int.from_bytes(confirm, "big")
+            for index in range(len(confirm)*8):
+                bit = 1 << (self.window_size - index - 1)
+                if (bit & confirm_int) == 0:
+                    is_window_full = False
+                    # Resend lost packet
+                    if self.send_window != None:
+                        self.send(create_packet(
+                            PacketType.Data, self.id, index, self.window_number, self.send_window[index]))
+
+            if is_window_full:
+                self.state = SendState.Wait_window_confirm
+                self.window_number += 1
+                self.send_next_window()
+                log.info(f"Window {self.window_number} +")
             else:
-                confirm = BitArray(bytearray(confirm).reverse()).bin
-                for index, bit in enumerate(confirm):
-                    if bit == "0":
-                        is_window_full = False
-                        # Resend lost packet
-                        if self.send_window != None:
-                            self.send(create_packet(
-                                PacketType.Data, self.id, index, self.window_number, self.send_window[index]))
-
-                if is_window_full:
-                    self.state = SendState.Wait_window_confirm
-                    self.window_number += 1
-                    self.send_next_window()
-                else:
-                    log.debug(f"{self.window_number}: Resend {confirm}")
-
-
-class InitData:
-    def __init__(self, file_path: str) -> None:
-        self.file_path = file_path
-        # Try to open the file to check if it exists
-        try:
-            self.file = open(file_path, "rb")
-            # Get the length of the file
-            self.file_len = os.path.getsize(file_path)
-        except:
-            raise Exception("File does not exist")
-
-    @property
-    def bytes(self) -> bytes:
-        data = b''
-        data += self.file_len.to_bytes(8, "big")
-        data += bytes(self.file_path, "utf-8")
-
-        return data
-
-    def __len__(self) -> int:
-        return len(self.bytes)
+                log.info(f"Window {self.window_number} -")
