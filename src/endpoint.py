@@ -1,8 +1,12 @@
+import os
 import colorlog
 
 from threading import Thread
 from userInterface import handle_commands
 from MainServer import Server
+
+if not os.path.exists("./src/save"):
+    os.mkdir("./src/save")
 
 colorlog.basicConfig(level=colorlog.DEBUG)
 
