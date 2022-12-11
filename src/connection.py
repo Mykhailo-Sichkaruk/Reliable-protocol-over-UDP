@@ -47,9 +47,13 @@ class Conn:
         self.packet_queue: deque[MRP] = deque()
         self.last_transfer_id: int = 0
         self.future_send: bool = False
+        self._killed = False
         log.critical(f"Connection created with {ip}:{port}")
 
     def run(self):
+        if self._killed:
+            return False
+        
         # Check for timeout
         if self.state == ConnState.Disconnected and not self.future_send:
             return False
@@ -163,3 +167,11 @@ class Conn:
                                                              self.last_transfer_id, self.send, file_path, window_len, frame_len)
 
         self.last_transfer_id += 1
+
+    def kill(self):
+        self.state = ConnState.Disconnected
+        self._killed = True
+        log.critical(f"Connection with {self.destination[0]}:{self.destination[1]} killed")
+    
+    def close(self):
+        self.state = ConnState.Disconnected

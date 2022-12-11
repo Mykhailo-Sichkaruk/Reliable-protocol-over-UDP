@@ -1,3 +1,4 @@
+import sys
 import colorlog
 
 from MainServer import Server
@@ -8,6 +9,11 @@ handler.setFormatter(formatter)
 log = colorlog.getLogger(__name__)
 log.addHandler(handler)
 
+# is windows
+if sys.platform.startswith("win"):
+    default_stdin = open("CONIN$", "r")
+else:
+    default_stdin = open("/dev/tty", "r")
 
 def d_input(default: str, msg: str) -> str:
     user_input = input(msg)
@@ -25,16 +31,19 @@ def handle_commands(server: Server):
     frame_len: int = 50
     window_size: int = 16
 
-    while True:
+    while server.is_running:
         try:
             user_input = input("Enter command: ").strip()
         except KeyboardInterrupt:
             log.info("Client stopped by user")
-            exit()
-
+            server.close()
+        except EOFError:
+            # set default input stdin
+            sys.stdin = default_stdin
+        
         if user_input == "exit":
             log.info("Client stopped by user")
-            exit()
+            server.close()
         elif user_input == "help":
             log.info("Available commands:")
             log.info("help - show this message")
@@ -58,3 +67,5 @@ def handle_commands(server: Server):
             frame_len = int(
                 d_input(str(frame_len), f"Frame length (default: {frame_len}): "))
             server.send_message(msg, ip, port, window_size, frame_len)
+    
+
