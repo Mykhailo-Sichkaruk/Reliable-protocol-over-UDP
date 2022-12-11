@@ -43,15 +43,15 @@ class Server:
                         data = self.broke_packet(data)
                     self.dispatch_packet(parse_packet(data), ip, port)
                 except Exception as e:
-                    print(e)
+                    pass
 
             delete_connections = []
             for connection in self.connections.values():
                 if not connection.run():
                     delete_connections.append(connection)
 
-            for connection in delete_connections:
-                del self.connections[f"{connection.destination[0]}:{connection.destination[1]}"]
+            # for connection in delete_connections:
+            #     del self.connections[f"{connection.destination[0]}:{connection.destination[1]}"]
 
     def broke_packet(self, data: bytes):
         # Change any byte in the packet
@@ -62,8 +62,10 @@ class Server:
         return bytes(bytearray_data)
 
     def send_file(self, file_name: str, ip: str, port: int, window_len: int = 64, frame_len: int = 500):
-        self.connections[f"{ip}:{port}"] = Conn(
-            self.socket, ip, port, window_len, frame_len)
+        if self.connections.get(f"{ip}:{port}", None) == None:
+            self.connections[f"{ip}:{port}"] = Conn(
+                self.socket, ip, port, window_len, frame_len)
+
         self.connections[f"{ip}:{port}"].send_file(
             file_name, frame_len, window_len)
 
