@@ -1,11 +1,13 @@
 
 import logging
+import socket
+import selectors
+
 from random import randint
 from typing import Any
 from connection import Conn
 from packetParser import parse_packet, MRP
-import socket
-import selectors
+from services import MSG_SEND
 
 HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
 PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
@@ -15,17 +17,17 @@ log = logging.getLogger("server")
 
 
 class Server:
-    def __init__(self, host=None, port: int = 0, error_rate: int = 0):
+    def __init__(self, host: str | None = None, port: int = 0, error_rate: int = 0):
         self.connections: dict[str, Conn] = {}
         self.port = port
         self.host = host
         self.error_rate = error_rate
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.bind(("localhost", self.port))
+        self.socket.bind((host, port))
         self.socket.setblocking(False)
         self.create_selector()
 
-        log.info(f"!Server started on {self.host}:{self.port}")
+        log.info(f"!Server started on {self.socket.getsockname()}")
 
     def create_selector(self):
         self.selector = selectors.DefaultSelector()
@@ -42,7 +44,7 @@ class Server:
                         log.info(f"!Broke packet from {ip}:{port}")
                         data = self.broke_packet(data)
                     self.dispatch_packet(parse_packet(data), ip, port)
-                except Exception as e:
+                except Exception:
                     pass
 
             delete_connections = []
@@ -61,13 +63,20 @@ class Server:
 
         return bytes(bytearray_data)
 
-    def send_file(self, file_name: str, ip: str, port: int, window_len: int = 64, frame_len: int = 500):
+    def send_file(self, file_path: str, ip: str, port: int, window_len: int = 64, frame_len: int = 500):
         if self.connections.get(f"{ip}:{port}", None) == None:
             self.connections[f"{ip}:{port}"] = Conn(
                 self.socket, ip, port, window_len, frame_len)
 
         self.connections[f"{ip}:{port}"].send_file(
-            file_name, frame_len, window_len)
+            file_path, frame_len, window_len)
+
+    def send_message(self, msg: str, ip: str, port: int, window_len: int = 64, frame_len: int = 500):
+        # Create file with message
+        msg_file = open(MSG_SEND, "w")
+        msg_file.write(msg)
+        msg_file.close()
+        self.send_file(MSG_SEND, ip, port, window_len, frame_len)
 
     def dispatch_packet(self, packet: MRP, ip: str, port: int):
         if self.connections.get(f"{ip}:{port}", None) == None:

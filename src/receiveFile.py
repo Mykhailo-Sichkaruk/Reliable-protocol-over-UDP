@@ -1,14 +1,16 @@
+import logging
+import os
+
 from hashlib import md5
-from bitstring import BitArray
-from services import time_ms
+from services import time_ms, MSG_RECV
 from enum import Enum
 from typing import Callable
 from packetParser import MRP, PacketType, create_packet
-import logging
+
 
 log = logging.getLogger(__name__)
 
-WINDOW_TIMEOUT = 500  # ms
+WINDOW_TIMEOUT = 5000  # ms
 
 
 class ReceiveState(Enum):
@@ -39,8 +41,6 @@ class ReceiveFile:
             self.is_started = True
             self.add_packet(packet)
 
-        log.critical(f"Receiving file")
-
     def run(self):
         if (self.state == ReceiveState.Wait_window
                 and self.last_packet_time + WINDOW_TIMEOUT < time_ms()):
@@ -51,23 +51,32 @@ class ReceiveFile:
             else:
                 self.end_transfer()
 
-        return self.state == ReceiveState.End_transfer
+        return self.state != ReceiveState.End_transfer
 
     def end_transfer(self):
         end_time = time_ms()
         self.file.seek(0)
-        hash = md5(self.file.read()).hexdigest()
-        log.critical(
-            f"Transfer ended successfully \n\
-                \tFile: {self.file_path} \n\
-                \tFragment size: {self.fragment_len} B \n\
-                \tWindow size: {self.window_size} \n\
-                \tMD5 hash expected: {self.md5_hash_expected} \n\
-                \tMD5 Hash received: {hash} \n\n\
-                \tTime: {int((time_ms() - self.start_time) / 1000)}s \n\
-                \tFile size: {self.file_len} B \n\
-                \tAverage speed {int(self.file_len / (end_time - self.start_time)) } KiB/s")
-        self.file.close()
+        received_hash = md5(self.file.read()).hexdigest()
+        if self.file_path == MSG_RECV:
+            self.file.seek(0)
+            msg = self.file.read().decode("utf-8")
+            # Delete the file
+            self.file.close()
+            os.remove(self.file_path)
+            log.critical(f"Message received: {msg}")
+        else:
+            log.critical(
+                f"File received successfully \n\
+                    \tFile: {self.file_path} \n\
+                    \tFragment size: {self.fragment_len} B \n\
+                    \tWindow size: {self.window_size} \n\
+                    \tMD5 hash expected: {self.md5_hash_expected} \n\
+                    \tMD5 Hash received: {received_hash} \n\n\
+                    \tTime: {int((time_ms() - self.start_time) / 1000)}s \n\
+                    \tFile size: {self.file_len} B \n\
+                    \tAverage speed {int(self.file_len / (end_time - self.start_time)) } KiB/s")
+            self.file.close()
+
         self.state = ReceiveState.End_transfer
 
     def handle_window(self):
@@ -95,7 +104,7 @@ class ReceiveFile:
         # Check if the window is correct
         for i in range(self.window_size):
             if self.window[i].number_in_window != i:
-                raise Exception(
+                raise RuntimeError(
                     f"Window is not correct {self.window_number} {i}!={self.window[i].number_in_window}")
 
         # Write the data to the file
@@ -121,7 +130,7 @@ class ReceiveFile:
         # Check if the window is correct
         for i in range(self.window_size):
             if self.window[i].number_in_window != i:
-                raise Exception("Window is not correct")
+                raise ValueError("Window is not correct")
 
         # Add the data to the init data
         for packet in self.window:
@@ -158,7 +167,7 @@ class ReceiveFile:
             result |= 1 << (self.window_size - packet.number_in_window - 1)
         let = result.to_bytes(self.window_size // 8, "big")
         if len(let) != self.window_size // 8:
-            raise Exception("Wrong size")
+            raise ValueError("Wrong size")
 
         return let
 
@@ -170,7 +179,6 @@ class ReceiveFile:
             self.window_size = packet.number_in_window
             self.fragment_len = packet.window_number
             self.state = ReceiveState.Wait_window
-            log.info(f"Init transfer, time: {time_ms()}")
             self.send(create_packet(
                 PacketType.ConfirmInit_file_transfer, self.id, 0, 0, b""))
         elif self.state == ReceiveState.Wait_window:
@@ -180,7 +188,6 @@ class ReceiveFile:
 
     def parse_init_data(self, data: bytes) -> dict:
         # Parse the init data
-        log.debug(f"Init data: {data}")
         file_len = int.from_bytes(data[:8], "big")
         md5_hash = data[8:24]
         file_path = data[24:].decode("utf-8")

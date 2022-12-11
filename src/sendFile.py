@@ -1,12 +1,14 @@
+import logging
+import os
+
 from math import ceil
 from enum import Enum
 from io import SEEK_END
-from typing import Callable
+from typing import Any, Callable
 from initData import InitData
 from packetParser import MRP, PacketType, create_packet
-import logging
+from services import MSG_SEND
 
-from services import time_ms
 
 log = logging.getLogger(__name__)
 
@@ -34,19 +36,25 @@ class SendFile:
         self.send = send
         self.is_inited: bool = False
         self.md5_hash: bytes
+        self.file: Any
 
     def run(self):
         if not self.is_inited:
             self.init()
             self.is_inited = True
 
-        return self.state == SendState.End_transfer
+        return self.state != SendState.End_transfer
 
     def init(self):
         self.file = open(self.file_path, "rb")
         self.__file_size = self.file.seek(0, SEEK_END)
         self.file.seek(0)
-        self.send_init_data()
+        self.send_file_init()
+        if self.file_path != MSG_SEND:
+            log.info(
+                f"Sending file {self.file_path} with size {self.__file_size} bytes")
+        else:
+            log.info(f"Send msg with size {self.__file_size} bytes")
 
     def get_window(self):
        # While cursore isnt at the end of the file, yield a window of data,
@@ -69,28 +77,26 @@ class SendFile:
                       for _ in range(self.window_size)]
 
             return result
-        else:
-            return None
 
-    def send_init_data(self):
+    def send_file_init(self):
         # Get the init data
         init_data: InitData = InitData(self.file_path)
         self.md5_hash = init_data.md5_hash
         self.init_data = init_data.bytes
 
-        # Length of the JSON object in bytes
-        init_data_len = len(init_data)
+        self.send_init(len(init_data))
+
+    def send_init(self, init_data_len: int):
         # Whole number of packets needed to send the JSON object
         separate_packets = ceil(init_data_len / self.fragment_len)
         # Whole number of windows needed to send the JSON object
         window_amount = ceil(separate_packets / self.window_size)
 
         if window_amount > 255:
-            raise Exception("Too many windows needed to send init data")
+            raise ValueError("Too many windows needed to send init data")
 
         self.init_last_window = window_amount - 1
         # Send init packet with the amount of windows needed to send the JSON object
-        log.info(f"Init transfer, time: {time_ms()}")
         self.send(create_packet(
             PacketType.Init_file_transfer, self.id, self.window_size, self.fragment_len, self.init_last_window.to_bytes(1, "big")))
 
@@ -98,18 +104,25 @@ class SendFile:
         # Update window
         self.send_window = self.get_window()
         if self.send_window == None:
-            self.state = SendState.End_transfer
-            log.critical(f"File sent successfully\n\
-                        \tFile: {self.file_path}\n\
-                        \tFragment size: {self.fragment_len}\n\
-                        \tWindow size: {self.window_size}\n\
-                        \tMD5 hash: {self.md5_hash.hex()}\n\n\
-                        \tFile size: {self.__file_size}")
-            # Send the window
+            self.handle_end_transfer()
         else:
             for i, packet in enumerate(self.send_window):
                 self.send(create_packet(PacketType.Data, self.id,
                                         i, self.window_number, packet))
+
+    def handle_end_transfer(self):
+        self.file.close()
+        if self.file_path != MSG_SEND:
+            log.critical(f"File sent successfully\n\
+                                \tFile: {self.file_path}\n\
+                                \tFragment size: {self.fragment_len}\n\
+                                \tWindow size: {self.window_size}\n\
+                                \tMD5 hash: {self.md5_hash.hex()}\n\n\
+                                \tFile size: {self.__file_size}")
+        else:
+            os.remove(self.file_path)
+
+        self.state = SendState.End_transfer
 
     def add_packet(self, packet: MRP):
         if self.state == SendState.Wait_init_confirm:
@@ -147,6 +160,5 @@ class SendFile:
                 self.state = SendState.Wait_window_confirm
                 self.window_number += 1
                 self.send_next_window()
-                log.info(f"Window {self.window_number} +")
             else:
-                log.info(f"Window {self.window_number} -")
+                log.info(f"F:{self.id} W:{self.window_number} resend")
