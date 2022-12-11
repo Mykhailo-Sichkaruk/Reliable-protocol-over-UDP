@@ -8,9 +8,6 @@ from connection import Conn
 from packetParser import parse_packet, MRP
 from services import MSG_SEND, formatter
 
-HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
-PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
-
 
 handler = colorlog.StreamHandler()
 handler.setFormatter(formatter)
@@ -28,25 +25,36 @@ class Server:
         self.socket.bind((host, port))
         self.socket.setblocking(False)
         self.create_selector()
+        self._is_running = True
 
         log.info(f"!Server started on {self.socket.getsockname()}")
+    
+    @property
+    def is_running(self) -> bool:
+        return self._is_running
 
     def create_selector(self):
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.socket, selectors.EVENT_READ, data=None)
 
     def start(self):
-        while True:
-            events: Any = self.selector.select(timeout=0)
-            for key, mask in events:
+        while self._is_running:
+            try:
+                events: Any = self.selector.select(timeout=0)
+            except ValueError:
+                events = []
+            for key, _ in events:
                 try:
                     data, (ip, port) = key.fileobj.recvfrom(1024)
                     # Broke packet with 0.01% probability
                     if self.error_rate > 0 and randint(0, self.error_rate) == 0:
                         log.warn(f"!Broke packet from {ip}:{port}")
                         data = self.broke_packet(data)
-                    self.dispatch_packet(parse_packet(data), ip, port)
-                except Exception:
+                    packet = parse_packet(data)
+                    log.debug(f"!Received packet from {ip}:{port} & datalen; {len(data)} bytes & flags; {packet.type}")
+
+                    self.dispatch_packet(packet, ip, port)
+                except IOError:
                     pass
 
             self.run_connections()
@@ -60,6 +68,7 @@ class Server:
         for connection in delete_connections:
             log.warn(
                 f"!Connection to {connection.destination[0]}:{connection.destination[1]} closed")
+            connection.close()
             del self.connections[f"{connection.destination[0]}:{connection.destination[1]}"]
 
     def broke_packet(self, data: bytes):
@@ -92,3 +101,17 @@ class Server:
             self.connections[f"{ip}:{port}"].add_packet(packet)
         else:
             self.connections[f"{ip}:{port}"].add_packet(packet)
+
+    def close(self):
+        # TODO: Close all connections before closing server
+
+        for addr, connection in self.connections.items():
+            connection.kill()
+
+        if len(self.connections) > 0:
+            log.warn(f"CONENCTIONS NOT CLOSED!")
+        
+        log.info(f"!Server closed")
+        self.socket.close()
+        self.selector.close()
+        self._is_running = False

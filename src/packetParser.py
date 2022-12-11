@@ -47,7 +47,7 @@ def parse_packet(data: bytes) -> MRP:
     """Parse bytes into MRP"""
     packet_type, file_id = parse_first_byte(data[0])
     packet_number_in_window = data[1]
-    window_number = int.from_bytes(data[2:4])
+    window_number = int.from_bytes(data[2:4], "big")
     checksum = int.from_bytes(data[4:8], "big")
     payload = data[8:]
     unbroken = check_checksum(data)
