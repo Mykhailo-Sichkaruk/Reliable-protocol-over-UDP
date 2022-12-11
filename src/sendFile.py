@@ -1,4 +1,4 @@
-import logging
+import colorlog
 import os
 
 from math import ceil
@@ -7,10 +7,12 @@ from io import SEEK_END
 from typing import Any, Callable
 from initData import InitData
 from packetParser import MRP, PacketType, create_packet
-from services import MSG_SEND
+from services import MSG_SEND, formatter
 
-
-log = logging.getLogger(__name__)
+handler = colorlog.StreamHandler()
+handler.setFormatter(formatter)
+log = colorlog.getLogger(__name__)
+log.addHandler(handler)
 
 
 class SendState(Enum):
@@ -22,7 +24,8 @@ class SendState(Enum):
 
 
 class SendFile:
-    def __init__(self, id: int, send: Callable[[bytes], None], file_path: str, window_size: int = 64, fragment_len: int = 100) -> None:
+    def __init__(self, destination: tuple[str, int], id: int, send: Callable[[bytes], None], file_path: str, window_size: int = 64, fragment_len: int = 100) -> None:
+        self.destination = destination
         self.id = id
         self.file_path = file_path
         self.window_size = window_size
@@ -52,9 +55,10 @@ class SendFile:
         self.send_file_init()
         if self.file_path != MSG_SEND:
             log.info(
-                f"Sending file {self.file_path} with size {self.__file_size} bytes")
+                f"Sending file {self.file_path}: {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
         else:
-            log.info(f"Send msg with size {self.__file_size} bytes")
+            log.info(
+                f"Send msg with size {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
 
     def get_window(self):
        # While cursore isnt at the end of the file, yield a window of data,
@@ -113,7 +117,7 @@ class SendFile:
     def handle_end_transfer(self):
         self.file.close()
         if self.file_path != MSG_SEND:
-            log.critical(f"File sent successfully\n\
+            log.critical(f"File sent successfully -> {self.destination[0]}:{self.destination[0]}\n\
                                 \tFile: {self.file_path}\n\
                                 \tFragment size: {self.fragment_len}\n\
                                 \tWindow size: {self.window_size}\n\
@@ -153,6 +157,7 @@ class SendFile:
                     is_window_full = False
                     # Resend lost packet
                     if self.send_window != None:
+                        log.info("Resending packet")
                         self.send(create_packet(
                             PacketType.Data, self.id, index, self.window_number, self.send_window[index]))
 
@@ -161,4 +166,5 @@ class SendFile:
                 self.window_number += 1
                 self.send_next_window()
             else:
-                log.info(f"F:{self.id} W:{self.window_number} resend")
+                log.info(
+                    f"F:{self.id} W:{self.window_number} resend -> {self.destination[0]}:{self.destination[1]}")

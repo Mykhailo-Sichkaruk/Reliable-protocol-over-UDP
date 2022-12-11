@@ -1,5 +1,4 @@
-
-import logging
+import colorlog
 import socket
 import selectors
 
@@ -7,13 +6,16 @@ from random import randint
 from typing import Any
 from connection import Conn
 from packetParser import parse_packet, MRP
-from services import MSG_SEND
+from services import MSG_SEND, formatter
 
 HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
 PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
 
 
-log = logging.getLogger("server")
+handler = colorlog.StreamHandler()
+handler.setFormatter(formatter)
+log = colorlog.getLogger(__name__)
+log.addHandler(handler)
 
 
 class Server:
@@ -41,19 +43,24 @@ class Server:
                     data, (ip, port) = key.fileobj.recvfrom(1024)
                     # Broke packet with 0.01% probability
                     if self.error_rate > 0 and randint(0, self.error_rate) == 0:
-                        log.info(f"!Broke packet from {ip}:{port}")
+                        log.warn(f"!Broke packet from {ip}:{port}")
                         data = self.broke_packet(data)
                     self.dispatch_packet(parse_packet(data), ip, port)
                 except Exception:
                     pass
 
-            delete_connections = []
-            for connection in self.connections.values():
-                if not connection.run():
-                    delete_connections.append(connection)
+            self.run_connections()
 
-            # for connection in delete_connections:
-            #     del self.connections[f"{connection.destination[0]}:{connection.destination[1]}"]
+    def run_connections(self):
+        delete_connections = []
+        for connection in self.connections.values():
+            if not connection.run():
+                delete_connections.append(connection)
+
+        for connection in delete_connections:
+            log.warn(
+                f"!Connection to {connection.destination[0]}:{connection.destination[1]} closed")
+            del self.connections[f"{connection.destination[0]}:{connection.destination[1]}"]
 
     def broke_packet(self, data: bytes):
         # Change any byte in the packet

@@ -1,16 +1,19 @@
-import logging
+import colorlog
 import os
 
 from hashlib import md5
-from services import time_ms, MSG_RECV
+from services import time_ms, MSG_RECV, formatter
 from enum import Enum
 from typing import Callable
 from packetParser import MRP, PacketType, create_packet
 
+handler = colorlog.StreamHandler()
+handler.setFormatter(formatter)
+log = colorlog.getLogger(__name__)
+log.addHandler(handler)
 
-log = logging.getLogger(__name__)
-
-WINDOW_TIMEOUT = 5000  # ms
+WINDOW_TIMEOUT = 60  # ms
+CONFIRM_RESEND_TIMEOUT = 5000  # ms
 
 
 class ReceiveState(Enum):
@@ -20,7 +23,8 @@ class ReceiveState(Enum):
 
 
 class ReceiveFile:
-    def __init__(self, self_function_injection: Callable[[bytes], None], packet: MRP | None = None) -> None:
+    def __init__(self, destination: tuple[str, int], self_function_injection: Callable[[bytes], None], packet: MRP | None = None) -> None:
+        self.destination = destination
         self.send = self_function_injection
         self.window_size: int = 8
         self.fragment_len: int = 1
@@ -35,6 +39,7 @@ class ReceiveFile:
         self.is_started: bool = False
         self.start_time: int = 0
         self.last_window_confirm: bytes = b""
+        self.confirm_resend_time: int = 0
 
         if packet is not None:
             self.start_time = time_ms()
@@ -46,12 +51,26 @@ class ReceiveFile:
                 and self.last_packet_time + WINDOW_TIMEOUT < time_ms()):
             if self.received_bytes < self.file_len:
                 # Resend the last window
-                self.last_packet_time = time_ms()
-                self.handle_lost_packets()
+                if time_ms() - self.last_packet_time < CONFIRM_RESEND_TIMEOUT:
+                    self.last_packet_time = time_ms()
+                    self.handle_lost_packets()
+                else:
+                    self.handle_error_transfer()
             else:
                 self.end_transfer()
 
         return self.state != ReceiveState.End_transfer
+
+    def handle_error_transfer(self):
+        if self.file_path == MSG_RECV:
+            log.critical(
+                f"Message transfer failed <- {self.destination[0]}:{self.destination[1]}")
+        else:
+            log.critical(
+                f"{self.file_path} Receiving failed, host timed out <- {self.destination[0]}:{self.destination[1]} ")
+        self.state = ReceiveState.End_transfer
+        self.file.close()
+        os.remove(self.file_path)
 
     def end_transfer(self):
         end_time = time_ms()
@@ -63,10 +82,12 @@ class ReceiveFile:
             # Delete the file
             self.file.close()
             os.remove(self.file_path)
-            log.critical(f"Message received: {msg}")
+            log.error(
+                f"Message received <- {self.destination[0]}:{self.destination[1]}")
+            log.critical(f"\r\t\t <<<< {msg}")
         else:
             log.critical(
-                f"File received successfully \n\
+                f"File received successfully <- {self.destination[0]}:{self.destination[1]}\n\
                     \tFile: {self.file_path} \n\
                     \tFragment size: {self.fragment_len} B \n\
                     \tWindow size: {self.window_size} \n\
@@ -113,7 +134,7 @@ class ReceiveFile:
             self.received_bytes += len(packet.payload)
 
         log.debug(
-            f"F:{self.id} W:{self.window_number}: {round((self.received_bytes / self.file_len) * 100, 2)}%")
+            f"F:{self.id} W:{self.window_number}: {round((self.received_bytes / self.file_len) * 100, 2)}% <-\t{self.destination[0]}:{self.destination[1]}")
         # Send the confirm
         confirm_payload = ((2 ** self.window_size) -
                            1).to_bytes(self.window_size // 8, "big")
@@ -152,10 +173,9 @@ class ReceiveFile:
             self.send(create_packet(PacketType.ConfirmData,
                       self.id, 0, self.window_number - 1, self.last_window_confirm))
             log.critical(
-                f"Resend confirm {self.window_number}: {self.last_window_confirm}")
+                f"Resend confirm {self.window_number}: {self.last_window_confirm} <- {self.destination[0]}:{self.destination[1]}")
         else:
             self.window.sort(key=lambda packet: packet.number_in_window)
-
             payload = self.get_sum_confirm()
             packet = create_packet(
                 PacketType.ConfirmData, self.id, 0, self.window_number, payload)
