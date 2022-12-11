@@ -1,16 +1,20 @@
-import logging
+import colorlog
 
 from collections import deque
 from enum import Enum
 from socket import SocketType
-from services import time_ms
+from services import time_ms, formatter
 from packetParser import MRP, PacketType, create_packet
 from receiveFile import ReceiveFile
 from sendFile import SendFile
 
 ACK_TIMEOUT = 100  # ms
 KEEP_ALIVE_TIMEOUT = 10000  # ms
-log = logging.getLogger(__name__)
+
+handler = colorlog.StreamHandler()
+handler.setFormatter(formatter)
+log = colorlog.getLogger(__name__)
+log.addHandler(handler)
 
 
 class ConnState(Enum):
@@ -112,6 +116,7 @@ class Conn:
         self.last_packet_time = time_ms()
 
         if not packet.unbroken:
+            log.warn("Packet is broken")
             return
 
         if packet.type == PacketType.OpenConnection:
@@ -139,8 +144,8 @@ class Conn:
 
     def dispatch_packet(self, packet: MRP):
         if packet.file_id not in self.transfers:
-            self.transfers[packet.file_id] = ReceiveFile(
-                self.send, packet)
+            self.transfers[packet.file_id] = ReceiveFile(self.destination,
+                                                         self.send, packet)
         else:
             self.transfers[packet.file_id].add_packet(packet)
 
@@ -149,12 +154,12 @@ class Conn:
 
     def send_file(self, file_path: str, frame_len: int, window_len: int):
         if self.state == ConnState.Send_awailable or self.state == ConnState.Send_Receive_awailable:
-            self.transfers[self.last_transfer_id] = SendFile(
-                self.last_transfer_id, self.send, file_path, window_len, frame_len)
+            self.transfers[self.last_transfer_id] = SendFile(self.destination,
+                                                             self.last_transfer_id, self.send, file_path, window_len, frame_len)
         else:
             self.open_connection()
             self.future_send = True
-            self.transfers[self.last_transfer_id] = SendFile(
-                self.last_transfer_id, self.send, file_path, window_len, frame_len)
+            self.transfers[self.last_transfer_id] = SendFile(self.destination,
+                                                             self.last_transfer_id, self.send, file_path, window_len, frame_len)
 
         self.last_transfer_id += 1

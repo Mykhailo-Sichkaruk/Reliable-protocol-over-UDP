@@ -1,8 +1,12 @@
-import logging
+import colorlog
 
 from MainServer import Server
+from services import formatter
 
-log = logging.getLogger(__name__)
+handler = colorlog.StreamHandler()
+handler.setFormatter(formatter)
+log = colorlog.getLogger(__name__)
+log.addHandler(handler)
 
 
 def d_input(default: str, msg: str) -> str:
