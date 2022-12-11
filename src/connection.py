@@ -1,6 +1,7 @@
+import logging
+
 from collections import deque
 from enum import Enum
-import logging
 from socket import SocketType
 from services import time_ms
 from packetParser import MRP, PacketType, create_packet
@@ -8,6 +9,7 @@ from receiveFile import ReceiveFile
 from sendFile import SendFile
 
 ACK_TIMEOUT = 100  # ms
+KEEP_ALIVE_TIMEOUT = 10000  # ms
 log = logging.getLogger(__name__)
 
 
@@ -24,6 +26,7 @@ class ConnState(Enum):
 
     Receive_Wait_Send_awailable = 6
     Receive_Wait_Send_Confirm = 7
+    Wait_Receive_awailable = 8
 
 
 class Conn:
@@ -39,19 +42,47 @@ class Conn:
         self.last_packet_time: int = time_ms()  # ms
         self.packet_queue: deque[MRP] = deque()
         self.last_transfer_id: int = 0
-
+        self.future_send: bool = False
         log.critical(f"Connection created with {ip}:{port}")
 
     def run(self):
-        if self.state == ConnState.Wait_Send_Confirm:
-            self.handle_send_confirm()
-        elif self.state == ConnState.Wait_Send_awailable or self.state == ConnState.Receive_Wait_Send_awailable:
-            self.handle_wait_send_awailable()
-        else:
-            for transfer in self.transfers.values():
-                transfer.run()
+        # Check for timeout
+        if self.state == ConnState.Disconnected and not self.future_send:
+            return False
 
-        return self.state != ConnState.Disconnected
+        if time_ms() - self.last_packet_time > KEEP_ALIVE_TIMEOUT:
+            self.handle_timeout()
+        else:
+            if self.state == ConnState.Wait_Send_Confirm:
+                self.handle_send_confirm()
+            elif self.state == ConnState.Wait_Send_awailable or self.state == ConnState.Receive_Wait_Send_awailable:
+                self.handle_wait_send_awailable()
+            else:
+                delete_transfers = []
+                for transfer in self.transfers.values():
+                    if not transfer.run():
+                        delete_transfers.append(transfer.id)
+
+                for transfer_id in delete_transfers:
+                    del self.transfers[transfer_id]
+                    self.future_send = False
+
+        return True
+
+    def handle_timeout(self):
+        if self.state == ConnState.Send_awailable or self.state == ConnState.Send_Receive_awailable:
+            log.info("Long time no see, may I continue sending?")
+            self.last_packet_time = time_ms()
+            self.send(create_packet(
+                PacketType.OpenConnection, 0, 0, 0, b""))
+            if self.state == ConnState.Send_awailable:
+                self.state = ConnState.Wait_Send_Confirm
+            else:
+                self.state = ConnState.Receive_Wait_Send_Confirm
+        elif self.state == ConnState.Wait_Send_Confirm or self.state == ConnState.Receive_Wait_Send_Confirm:
+            log.info(f"Disconnected from {self.destination} by timeout")
+            self.state = ConnState.Disconnected
+            return False
 
     def handle_wait_send_awailable(self):
         # If there are no packets for a long time, then resend the send confirmation
@@ -87,20 +118,23 @@ class Conn:
             if self.state == ConnState.Disconnected:
                 self.send(create_packet(
                     PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
-                self.state = ConnState.Wait_Send_awailable
+                self.state = ConnState.Wait_Receive_awailable
             elif self.state == ConnState.Send_awailable:
                 self.send(create_packet(
                     PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
                 self.state = ConnState.Send_Receive_awailable
-        elif packet.type == PacketType.ConfirmOpenConnection and self.state == ConnState.Wait_Send_Confirm:
+            else:
+                self.send(create_packet(
+                    PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
+        elif packet.type == PacketType.ConfirmOpenConnection:
             self.state = ConnState.Send_awailable
-        elif self.state == ConnState.Wait_Send_awailable:
-            self.state = ConnState.Send_awailable
+        elif self.state == ConnState.Wait_Receive_awailable:
+            self.state = ConnState.Receive_awailable
             self.dispatch_packet(packet)
         elif self.state == ConnState.Receive_awailable or self.state == ConnState.Send_Receive_awailable or self.state == ConnState.Send_awailable:
             self.dispatch_packet(packet)
         else:
-            raise Exception(
+            raise ConnectionError(
                 f"Packet {packet.type} received in state {self.state}")
 
     def dispatch_packet(self, packet: MRP):
@@ -119,5 +153,8 @@ class Conn:
                 self.last_transfer_id, self.send, file_path, window_len, frame_len)
         else:
             self.open_connection()
+            self.future_send = True
             self.transfers[self.last_transfer_id] = SendFile(
                 self.last_transfer_id, self.send, file_path, window_len, frame_len)
+
+        self.last_transfer_id += 1
