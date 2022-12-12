@@ -41,7 +41,6 @@ class Server:
                     data, (ip, port) = key.fileobj.recvfrom(1024)
                     # Broke packet with 0.01% probability
                     if self.error_rate > 0 and randint(0, self.error_rate) == 0:
-                        log.error(f"!Broke packet from {ip}:{port}")
                         data = self.broke_packet(data)
                     packet = parse_packet(data)
                     self.dispatch_packet(packet, ip, port)
@@ -57,8 +56,6 @@ class Server:
                 delete_connections.append(connection)
 
         for connection in delete_connections:
-            log.warn(
-                f"!Connection to {connection.destination[0]}:{connection.destination[1]} closed")
             connection.close()
             del self.connections[f"{connection.destination[0]}:{connection.destination[1]}"]
 

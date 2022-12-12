@@ -4,17 +4,11 @@ from enum import Enum
 
 
 class PacketType(Enum):
-    Message = 0
-    Data = 1
-    KeepAlive = 2
-    OpenConnection = 3
-    CloseConnection = 4
     Confirm = 5
-    ConfirmOpenConnection = 6
-    ConfirmCloseConnection = 7
-    ConfirmKeepAlive = 8
+    Data = 1
     ConfirmData = 9
-    ConfirmMessage = 10
+    OpenConnection = 3
+    ConfirmOpenConnection = 6
     Init_file_transfer = 11
     ConfirmInit_file_transfer = 12
 

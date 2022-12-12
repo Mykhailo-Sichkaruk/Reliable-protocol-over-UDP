@@ -105,8 +105,12 @@ class ReceiveFile:
                 self.file_len = int(data["file_len"])
                 self.file_path = self.rename_file(data["file_path"])
                 self.md5_hash_expected: str = data["md5_hash"].hex()
-                self.file = open(self.file_path, "wb+")
-                log.critical(f"FILE OPENED")
+                try:
+                    self.file = open(self.file_path, "wb+")
+                except Exception as e:
+                    log.critical(f"Error opening file: {e}")
+                    self.handle_error_transfer()
+                    return
             else:
                 # Receive file data/
                 self.handle_file_window()
@@ -208,7 +212,10 @@ class ReceiveFile:
         return {"file_len": file_len, "md5_hash": md5_hash, "file_path": file_path}
 
     def rename_file(self, new_name: str):
-        name, postfix = new_name.split(
-            ".")[:-1], new_name.split(".")[-1]
 
-        return ".".join(name) + f"_copy." + postfix
+        while new_name.startswith('.'):
+            new_name = new_name.replace('.', '_', 1)
+        if '/' in new_name:
+            new_name = new_name.replace('/', '╱')
+
+        return f'./src/save/{time_ms()}-{new_name}'
