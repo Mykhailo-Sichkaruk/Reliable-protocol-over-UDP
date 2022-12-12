@@ -76,9 +76,8 @@ class ReceiveFile:
             # Delete the file
             self.file.close()
             os.remove(self.file_path)
-            log.error(
-                f"Message received <- {self.destination[0]}:{self.destination[1]}")
-            log.critical(f"\r\t\t <<<< {msg}")
+            log.critical(
+                f"{self.destination[0]}:{self.destination[1]} <<<< {msg}")
         else:
             log.critical(
                 f"File received successfully <- {self.destination[0]}:{self.destination[1]}\n\

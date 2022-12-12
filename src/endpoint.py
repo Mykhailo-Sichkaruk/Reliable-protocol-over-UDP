@@ -7,12 +7,17 @@ from MainServer import Server
 if not os.path.exists("./src/save"):
     os.mkdir("./src/save")
 
-
-ip = input("Enter server ip (127.0.0.1): ") or "127.0.0.1"
-port = int(input("Enter server port (1000): ") or 0) or 1000
-error_rate = int(
-    input("1 error will be simulated for N packets (0): ") or 0) or 0
-server = Server(ip, port, error_rate)
+while True:
+    try:
+        ip = input("Enter server ip (127.0.0.1): ") or "127.0.0.1"
+        port = int(input("Enter server port (1000): ") or 0) or 1000
+        error_rate = int(
+            input("1 error will be simulated for N packets (0): ") or 0) or 0
+        server = Server(ip, port, error_rate)
+        break
+    except Exception as e:
+        services.log.error(e)
+        continue
 
 Thread(target=handle_commands, args=(server,)).start()
 

@@ -7,7 +7,8 @@ from receiveFile import ReceiveFile
 from sendFile import SendFile
 
 ACK_TIMEOUT = 100  # ms
-KEEP_ALIVE_TIMEOUT = 10000  # ms
+SENDER_KEEPALIVE_TIMEOUT = 10000  # ms
+RECEIVED_KEEP_ALIVE_TIMEOUT = 20000  # ms
 
 
 class ConnState(Enum):
@@ -51,7 +52,7 @@ class Conn:
         if self.state == ConnState.Disconnected and not self.future_send:
             return False
 
-        if time_ms() - self.last_packet_time > KEEP_ALIVE_TIMEOUT:
+        if time_ms() - self.last_packet_time > SENDER_KEEPALIVE_TIMEOUT:
             self.handle_timeout()
         else:
             if self.state == ConnState.Wait_Send_Confirm:
@@ -84,6 +85,16 @@ class Conn:
             log.info(f"Disconnected from {self.destination} by timeout")
             self.state = ConnState.Disconnected
             return False
+        elif self.state == ConnState.Receive_awailable or self.state == ConnState.Receive_Wait_Send_awailable:
+            if self.last_packet_time + RECEIVED_KEEP_ALIVE_TIMEOUT < time_ms():
+                if self.state == ConnState.Receive_awailable:
+                    log.warn(
+                        f"{self.destination[0]}:{self.destination[1]} Sender is not interested in sending, closing...")
+                    self.state = ConnState.Disconnected
+                else:
+                    log.warn(
+                        f"{self.destination[0]}:{self.destination[1]} Sender is not interested in sending, but can receive")
+                    self.state = ConnState.Wait_Send_awailable
 
     def handle_wait_send_awailable(self):
         # If there are no packets for a long time, then resend the send confirmation
@@ -143,6 +154,8 @@ class Conn:
         if packet.file_id not in self.transfers:
             self.transfers[packet.file_id] = ReceiveFile(self.destination,
                                                          self.send, packet)
+            log.info(f"New file transfer {packet.file_id} started <<<")
+            self.last_transfer_id += 1
         else:
             self.transfers[packet.file_id].add_packet(packet)
 
@@ -159,6 +172,7 @@ class Conn:
             self.transfers[self.last_transfer_id] = SendFile(self.destination,
                                                              self.last_transfer_id, self.send, file_path, window_len, frame_len)
 
+        log.info(f"File transfer {self.last_transfer_id} started >>>")
         self.last_transfer_id += 1
 
     def kill(self):

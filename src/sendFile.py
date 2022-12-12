@@ -49,7 +49,7 @@ class SendFile:
         self.send_file_init()
         if self.file_path != MSG_SEND:
             log.info(
-                f"Sending file {self.file_path}: {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
+                f"Sending file:{self.id} {self.file_path}: {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
         else:
             log.info(
                 f"Send msg with size {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
@@ -111,7 +111,7 @@ class SendFile:
     def handle_end_transfer(self):
         self.file.close()
         if self.file_path != MSG_SEND:
-            log.critical(f"File sent successfully -> {self.destination[0]}:{self.destination[0]}\n\
+            log.critical(f"File sent successfully -> {self.destination[0]}:{self.destination[1]}\n\
                                 \tFile: {self.file_path}\n\
                                 \tFragment size: {self.fragment_len}\n\
                                 \tWindow size: {self.window_size}\n\
@@ -151,7 +151,6 @@ class SendFile:
                     is_window_full = False
                     # Resend lost packet
                     if self.send_window != None:
-                        log.info("Resending packet")
                         self.send(create_packet(
                             PacketType.Data, self.id, index, self.window_number, self.send_window[index]))
 
@@ -161,4 +160,4 @@ class SendFile:
                 self.send_next_window()
             else:
                 log.info(
-                    f"F:{self.id} W:{self.window_number} resend -> {self.destination[0]}:{self.destination[1]}")
+                    f"F:{self.id} W:{self.window_number} resend some packets -> {self.destination[0]}:{self.destination[1]}")

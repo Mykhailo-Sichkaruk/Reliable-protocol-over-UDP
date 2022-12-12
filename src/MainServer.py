@@ -20,7 +20,7 @@ class Server:
         self.create_selector()
         self._is_running = True
 
-        log.warn(f"!Server started on {self.socket.getsockname()}")
+        log.warn(f"Server started on {self.socket.getsockname()}")
 
     @property
     def is_running(self) -> bool:
@@ -41,7 +41,7 @@ class Server:
                     data, (ip, port) = key.fileobj.recvfrom(1024)
                     # Broke packet with 0.01% probability
                     if self.error_rate > 0 and randint(0, self.error_rate) == 0:
-                        log.warn(f"!Broke packet from {ip}:{port}")
+                        log.error(f"!Broke packet from {ip}:{port}")
                         data = self.broke_packet(data)
                     packet = parse_packet(data)
                     self.dispatch_packet(packet, ip, port)
@@ -99,10 +99,7 @@ class Server:
         for addr, connection in self.connections.items():
             connection.kill()
 
-        if len(self.connections) > 0:
-            log.warn(f"CONENCTIONS NOT CLOSED!")
-
-        log.info(f"!Server closed")
+        log.warn(f"!Server closed")
         self.socket.close()
         self.selector.close()
         self._is_running = False

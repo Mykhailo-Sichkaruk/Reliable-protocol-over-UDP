@@ -22,6 +22,7 @@ def md5_file(file_path: str) -> str:
 
 
 formatter: colorlog.ColoredFormatter = colorlog.ColoredFormatter(
+    fmt="%(log_color)-8s%(reset)s %(log_color)s%(message)s%(reset)s",
     log_colors={
         'DEBUG':    'white',
         'INFO':     'cyan',
