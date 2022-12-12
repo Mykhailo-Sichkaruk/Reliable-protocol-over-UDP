@@ -1,13 +1,5 @@
 import hashlib
-import colorlog
 import os
-
-from services import formatter
-
-handler = colorlog.StreamHandler()
-handler.setFormatter(formatter)
-log = colorlog.getLogger(__name__)
-log.addHandler(handler)
 
 
 class InitData:

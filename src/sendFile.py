@@ -1,4 +1,3 @@
-import colorlog
 import os
 
 from math import ceil
@@ -7,12 +6,7 @@ from io import SEEK_END
 from typing import Any, Callable
 from initData import InitData
 from packetParser import MRP, PacketType, create_packet
-from services import MSG_SEND, formatter
-
-handler = colorlog.StreamHandler()
-handler.setFormatter(formatter)
-log = colorlog.getLogger(__name__)
-log.addHandler(handler)
+from services import MSG_SEND, log
 
 
 class SendState(Enum):

@@ -1,4 +1,3 @@
-import colorlog
 import socket
 import selectors
 
@@ -6,13 +5,7 @@ from random import randint
 from typing import Any
 from connection import Conn
 from packetParser import parse_packet, MRP
-from services import MSG_SEND, formatter
-
-
-handler = colorlog.StreamHandler()
-handler.setFormatter(formatter)
-log = colorlog.getLogger(__name__)
-log.addHandler(handler)
+from services import MSG_SEND, log
 
 
 class Server:
@@ -27,8 +20,8 @@ class Server:
         self.create_selector()
         self._is_running = True
 
-        log.info(f"!Server started on {self.socket.getsockname()}")
-    
+        log.warn(f"!Server started on {self.socket.getsockname()}")
+
     @property
     def is_running(self) -> bool:
         return self._is_running
@@ -51,8 +44,6 @@ class Server:
                         log.warn(f"!Broke packet from {ip}:{port}")
                         data = self.broke_packet(data)
                     packet = parse_packet(data)
-                    log.debug(f"!Received packet from {ip}:{port} & datalen; {len(data)} bytes & flags; {packet.type}")
-
                     self.dispatch_packet(packet, ip, port)
                 except IOError:
                     pass
@@ -89,8 +80,8 @@ class Server:
 
     def send_message(self, msg: str, ip: str, port: int, window_len: int = 64, frame_len: int = 500):
         # Create file with message
-        msg_file = open(MSG_SEND, "w")
-        msg_file.write(msg)
+        msg_file = open(MSG_SEND, "wb")
+        msg_file.write(bytes(msg, "utf-8"))
         msg_file.close()
         self.send_file(MSG_SEND, ip, port, window_len, frame_len)
 
@@ -110,7 +101,7 @@ class Server:
 
         if len(self.connections) > 0:
             log.warn(f"CONENCTIONS NOT CLOSED!")
-        
+
         log.info(f"!Server closed")
         self.socket.close()
         self.selector.close()

@@ -1,20 +1,13 @@
-import colorlog
-
 from collections import deque
 from enum import Enum
 from socket import SocketType
-from services import time_ms, formatter
+from services import time_ms, log
 from packetParser import MRP, PacketType, create_packet
 from receiveFile import ReceiveFile
 from sendFile import SendFile
 
 ACK_TIMEOUT = 100  # ms
 KEEP_ALIVE_TIMEOUT = 10000  # ms
-
-handler = colorlog.StreamHandler()
-handler.setFormatter(formatter)
-log = colorlog.getLogger(__name__)
-log.addHandler(handler)
 
 
 class ConnState(Enum):
@@ -53,7 +46,7 @@ class Conn:
     def run(self):
         if self._killed:
             return False
-        
+
         # Check for timeout
         if self.state == ConnState.Disconnected and not self.future_send:
             return False
@@ -171,7 +164,8 @@ class Conn:
     def kill(self):
         self.state = ConnState.Disconnected
         self._killed = True
-        log.critical(f"Connection with {self.destination[0]}:{self.destination[1]} killed")
-    
+        log.critical(
+            f"Connection with {self.destination[0]}:{self.destination[1]} killed")
+
     def close(self):
         self.state = ConnState.Disconnected

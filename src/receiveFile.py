@@ -1,18 +1,12 @@
-import colorlog
 import os
 
 from hashlib import md5
-from services import time_ms, MSG_RECV, formatter
+from services import time_ms, MSG_RECV, log, md5_file
 from enum import Enum
 from typing import Callable
 from packetParser import MRP, PacketType, create_packet
 
-handler = colorlog.StreamHandler()
-handler.setFormatter(formatter)
-log = colorlog.getLogger(__name__)
-log.addHandler(handler)
-
-WINDOW_TIMEOUT = 60  # ms
+WINDOW_TIMEOUT = 50  # ms
 CONFIRM_RESEND_TIMEOUT = 5000  # ms
 
 
@@ -75,7 +69,7 @@ class ReceiveFile:
     def end_transfer(self):
         end_time = time_ms()
         self.file.seek(0)
-        received_hash = md5(self.file.read()).hexdigest()
+        received_hash = md5_file(self.file_path)
         if self.file_path == MSG_RECV:
             self.file.seek(0)
             msg = self.file.read().decode("utf-8")
@@ -113,6 +107,7 @@ class ReceiveFile:
                 self.file_path = self.rename_file(data["file_path"])
                 self.md5_hash_expected: str = data["md5_hash"].hex()
                 self.file = open(self.file_path, "wb+")
+                log.critical(f"FILE OPENED")
             else:
                 # Receive file data/
                 self.handle_file_window()
