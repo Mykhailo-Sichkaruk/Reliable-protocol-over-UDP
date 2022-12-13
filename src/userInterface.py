@@ -22,7 +22,7 @@ def handle_commands(server: Server):
     file_path: str = ""
     file_len: int = 0
     msg: str = ""
-    ip: str = "127.0.0.1"
+    ip: str = "0.0.0.0"
     port: int = 1000
     frame_len: int = 50
     window_size: int = 16
