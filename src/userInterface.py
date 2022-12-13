@@ -69,6 +69,10 @@ def handle_commands(server: Server):
             frame_len = int(
                 d_input(str(frame_len), f"Frame length ({frame_len}): "))
             server.send_message(msg, ip, port, window_size, frame_len)
+        elif user_input.startswith("close"):
+            ip = d_input(ip, f"Client ip ({ip}): ")
+            port = int(d_input(str(port), f"Client port ({port}): "))
+            server.close_connection(ip, port)
 
 
 def check_file(file_path: str) -> bool | str:

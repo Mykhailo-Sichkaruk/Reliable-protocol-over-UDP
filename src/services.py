@@ -2,8 +2,8 @@ import hashlib
 import colorlog
 from time import time
 
-MSG_SEND: str = "./src/__pycache__/.msg"
-MSG_RECV: str = "./src/__pycache__/_copy.msg"
+MSG_SEND: str = ".msg"
+MSG_RECV: str = ".msg"
 
 
 def time_ms() -> int:
@@ -13,6 +13,17 @@ def time_ms() -> int:
 def md5_file(file_path: str) -> str:
     BLOCKSIZE = 65536
     hasher = hashlib.md5()
+    with open(file_path, 'rb') as afile:
+        buf = afile.read(BLOCKSIZE)
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = afile.read(BLOCKSIZE)
+        return hasher.hexdigest()
+
+
+def sha256_file(file_path: str) -> str:
+    BLOCKSIZE = 65536
+    hasher = hashlib.sha256()
     with open(file_path, 'rb') as afile:
         buf = afile.read(BLOCKSIZE)
         while len(buf) > 0:
@@ -49,7 +60,7 @@ colorlog.getLogger('').addHandler(handler)
 global log
 log = colorlog.getLogger(__name__)
 log.setLevel('DEBUG')
-log.info("Logger initialized")
+
 """_summary_escape_codes = {
     "reset": esc(0),
     "bold": esc(1),

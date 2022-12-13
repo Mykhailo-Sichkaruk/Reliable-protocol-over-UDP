@@ -43,16 +43,21 @@ class SendFile:
         return self.state != SendState.End_transfer
 
     def init(self):
-        self.file = open(self.file_path, "rb")
-        self.__file_size = self.file.seek(0, SEEK_END)
-        self.file.seek(0)
-        self.send_file_init()
-        if self.file_path != MSG_SEND:
-            log.info(
-                f"Sending file:{self.id} {self.file_path}: {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
-        else:
-            log.info(
-                f"Send msg with size {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
+        try:
+            self.file = open(self.file_path, "rb")
+            self.__file_size = self.file.seek(0, SEEK_END)
+            self.file.seek(0)
+            self.send_file_init()
+            if self.file_path != MSG_SEND:
+                log.info(
+                    f"Sending file:{self.id} {self.file_path}: {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
+            else:
+                log.info(
+                    f"Send msg with size {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
+
+        except Exception as e:
+            log.error(f"Error opening file: {e}")
+            self.state = SendState.End_transfer
 
     def get_window(self):
        # While cursore isnt at the end of the file, yield a window of data,
@@ -161,3 +166,6 @@ class SendFile:
             else:
                 log.info(
                     f"F:{self.id} W:{self.window_number} resend some packets -> {self.destination[0]}:{self.destination[1]}")
+
+    def close(self):
+        self.file.close()

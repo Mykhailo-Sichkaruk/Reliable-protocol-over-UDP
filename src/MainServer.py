@@ -39,7 +39,7 @@ class Server:
             for key, _ in events:
                 try:
                     data, (ip, port) = key.fileobj.recvfrom(1024)
-                    # Broke packet with 0.01% probability
+                    # Broke packet if error rate is set
                     if self.error_rate > 0 and randint(0, self.error_rate) == 0:
                         data = self.broke_packet(data)
                     packet = parse_packet(data)
@@ -50,7 +50,7 @@ class Server:
             self.run_connections()
 
     def run_connections(self):
-        delete_connections = []
+        delete_connections: list[Conn] = []
         for connection in self.connections.values():
             if not connection.run():
                 delete_connections.append(connection)
@@ -93,10 +93,15 @@ class Server:
     def close(self):
         # TODO: Close all connections before closing server
 
-        for addr, connection in self.connections.items():
+        for _, connection in self.connections.items():
             connection.kill()
 
         log.warn(f"!Server closed")
         self.socket.close()
         self.selector.close()
         self._is_running = False
+
+    def close_connection(self, ip: str, port: int):
+        if self.connections.get(f"{ip}:{port}", None) != None:
+            self.connections[f"{ip}:{port}"].kill()
+            del self.connections[f"{ip}:{port}"]

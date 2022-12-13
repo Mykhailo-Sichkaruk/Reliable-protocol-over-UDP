@@ -1,14 +1,17 @@
 from collections import deque
 from enum import Enum
+import hashlib
+from multiprocessing.connection import wait
 from socket import SocketType
-from services import time_ms, log
+import time
+from services import MSG_SEND, time_ms, log
 from packetParser import MRP, PacketType, create_packet
 from receiveFile import ReceiveFile
 from sendFile import SendFile
 
 ACK_TIMEOUT = 100  # ms
-SENDER_KEEPALIVE_TIMEOUT = 10000  # ms
-RECEIVED_KEEP_ALIVE_TIMEOUT = 20000  # ms
+SENDER_KEEPALIVE_TIMEOUT = 11000  # ms
+RECEIVED_KEEP_ALIVE_TIMEOUT = 21000  # ms
 
 
 class ConnState(Enum):
@@ -42,14 +45,17 @@ class Conn:
         self.last_transfer_id: int = 0
         self.future_send: bool = False
         self._killed = False
+        self.summ_header: int = 0
         log.critical(f"Connection created with {ip}:{port}")
 
-    def run(self):
+    def run(self) -> bool:
         if self._killed:
+            log.error(f"Summ header: {self.summ_header}")
             return False
 
         # Check for timeout
         if self.state == ConnState.Disconnected and not self.future_send:
+            log.error(f"Summ header: {self.summ_header}")
             return False
 
         if time_ms() - self.last_packet_time > SENDER_KEEPALIVE_TIMEOUT:
@@ -60,7 +66,7 @@ class Conn:
             elif self.state == ConnState.Wait_Send_awailable or self.state == ConnState.Receive_Wait_Send_awailable:
                 self.handle_wait_send_awailable()
             else:
-                delete_transfers = []
+                delete_transfers: list[int] = []
                 for transfer in self.transfers.values():
                     if not transfer.run():
                         delete_transfers.append(transfer.id)
@@ -73,7 +79,8 @@ class Conn:
 
     def handle_timeout(self):
         if self.state == ConnState.Send_awailable or self.state == ConnState.Send_Receive_awailable:
-            log.info("Long time no see, may I continue sending?")
+            log.info(
+                f"{self.destination[0]}:{self.destination[1]}  Long time no see, may I continue sending?")
             self.last_packet_time = time_ms()
             self.send(create_packet(
                 PacketType.OpenConnection, 0, 0, 0, b""))
@@ -103,7 +110,7 @@ class Conn:
                 PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
 
     def handle_send_confirm(self):
-        if self.find_packet(PacketType.Confirm) != None:
+        if self.find_packet(PacketType.ConfirmInit_file_transfer) != None:
             self.state = ConnState.Send_awailable
 
     def open_connection(self):
@@ -127,6 +134,7 @@ class Conn:
             log.warn("Packet is broken")
             return
 
+        self.summ_header += 8
         if packet.type == PacketType.OpenConnection:
             if self.state == ConnState.Disconnected:
                 self.send(create_packet(
@@ -154,7 +162,7 @@ class Conn:
         if packet.file_id not in self.transfers:
             self.transfers[packet.file_id] = ReceiveFile(self.destination,
                                                          self.send, packet)
-            log.info(f"New file transfer {packet.file_id} started <<<")
+            log.info(f"New transfer {packet.file_id} started <<<")
             self.last_transfer_id += 1
         else:
             self.transfers[packet.file_id].add_packet(packet)
@@ -176,10 +184,14 @@ class Conn:
         self.last_transfer_id += 1
 
     def kill(self):
+        for transfer in self.transfers.values():
+            transfer.close()
         self.state = ConnState.Disconnected
         self._killed = True
-        log.critical(
-            f"Connection with {self.destination[0]}:{self.destination[1]} killed")
+        log.warn(
+            f"Forced close connection with {self.destination[0]}:{self.destination[1]}")
 
     def close(self):
+        for transfer in self.transfers.values():
+            transfer.close()
         self.state = ConnState.Disconnected
