@@ -9,7 +9,7 @@ from packetParser import MRP, PacketType, create_packet
 from receiveFile import ReceiveFile
 from sendFile import SendFile
 
-ACK_TIMEOUT = 100  # ms
+ACK_TIMEOUT = 300  # ms
 SENDER_KEEPALIVE_TIMEOUT = 11000  # ms
 RECEIVED_KEEP_ALIVE_TIMEOUT = 21000  # ms
 

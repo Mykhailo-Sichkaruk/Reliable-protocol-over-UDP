@@ -14,7 +14,7 @@ class InitData(TypedDict):
     sha256: str
 
 
-WINDOW_TIMEOUT = 50  # ms
+WINDOW_TIMEOUT = 200  # ms
 CONFIRM_RESEND_TIMEOUT = 5000  # ms
 TRANSFER_TIMEOUT = 10000  # ms
 
