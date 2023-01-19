@@ -3,7 +3,7 @@ import os
 from services import sha256_file, time_ms, MSG_RECV, log, md5_file
 from enum import Enum
 from typing import Callable
-from packetParser import MRP, PacketType, create_packet
+from packetParser import MRP, PacketType
 from typing import TypedDict
 
 
@@ -153,7 +153,7 @@ class ReceiveFile:
         # Send the confirm
         confirm_payload = ((2 ** self.window_size) -
                            1).to_bytes(self.window_size // 8, "big")
-        self.send(create_packet(PacketType.ConfirmData,
+        self.send(MRP.serialize(PacketType.ConfirmData,
                   self.id, 0, self.window_number, confirm_payload))
 
         self.last_window_confirm = confirm_payload
@@ -175,7 +175,7 @@ class ReceiveFile:
         # Send the confirm
         confirm_payload = ((2 ** self.window_size) -
                            1).to_bytes(self.window_size // 8, "big")
-        self.send(create_packet(PacketType.ConfirmData,
+        self.send(MRP.serialize(PacketType.ConfirmData,
                   self.id, 0, self.window_number, confirm_payload))
 
         self.last_window_confirm = confirm_payload
@@ -185,14 +185,14 @@ class ReceiveFile:
     def handle_lost_packets(self):
         if self.last_window_confirm != b"":
             # Resend the last confirm
-            self.send(create_packet(PacketType.ConfirmData,
+            self.send(MRP.serialize(PacketType.ConfirmData,
                       self.id, 0, self.window_number - 1, self.last_window_confirm))
             log.critical(
                 f"F:{self.id} W:{self.window_number} Resend confirm <- {self.destination[0]}:{self.destination[1]}")
         else:
             self.window.sort(key=lambda packet: packet.number_in_window)
             payload = self.get_sum_confirm()
-            packet = create_packet(
+            packet = MRP.serialize(
                 PacketType.ConfirmData, self.id, 0, self.window_number, payload)
             self.send(packet)
 
@@ -214,7 +214,7 @@ class ReceiveFile:
             self.window_size = packet.number_in_window
             self.fragment_len = packet.window_number
             self.state = ReceiveState.Wait_window
-            self.send(create_packet(
+            self.send(MRP.serialize(
                 PacketType.ConfirmInit_file_transfer, self.id, 0, 0, b""))
         elif self.state == ReceiveState.Wait_window:
             self.window.append(packet)

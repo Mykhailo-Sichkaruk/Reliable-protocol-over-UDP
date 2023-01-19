@@ -1,7 +1,7 @@
 from enum import Enum
 from socket import SocketType
 from services import time_ms, log
-from packetParser import MRP, PacketType, create_packet
+from packetParser import MRP, PacketType
 from receiveFile import ReceiveFile
 from sendFile import SendFile
 
@@ -75,7 +75,7 @@ class Conn:
             log.info(
                 f"{self.destination[0]}:{self.destination[1]}  Long time no see, may I continue sending?")
             self.last_packet_time = time_ms()
-            self.send(create_packet(
+            self.send(MRP.serialize(
                 PacketType.OpenConnection, 0, 0, 0, b""))
             if self.state == ConnState.Send_awailable:
                 self.state = ConnState.Wait_Send_Confirm
@@ -99,7 +99,7 @@ class Conn:
     def handle_wait_send_awailable(self):
         # If there are no packets for a long time, then resend the send confirmation
         if time_ms() - self.last_packet_time > ACK_TIMEOUT:
-            self.send(create_packet(
+            self.send(MRP.serialize(
                 PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
 
     def open_connection(self):
@@ -109,7 +109,7 @@ class Conn:
         elif self.state == ConnState.Receive_awailable:
             self.state = ConnState.Receive_Wait_Send_Confirm
 
-        self.send(create_packet(PacketType.OpenConnection, 0, 0, 0, b""))
+        self.send(MRP.serialize(PacketType.OpenConnection, 0, 0, 0, b""))
 
     def add_packet(self, packet: MRP):
         self.last_packet_time = time_ms()
@@ -121,15 +121,15 @@ class Conn:
         self.summ_header += 8
         if packet.type == PacketType.OpenConnection:
             if self.state == ConnState.Disconnected:
-                self.send(create_packet(
+                self.send(MRP.serialize(
                     PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
                 self.state = ConnState.Wait_Receive_awailable
             elif self.state == ConnState.Send_awailable:
-                self.send(create_packet(
+                self.send(MRP.serialize(
                     PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
                 self.state = ConnState.Send_Receive_awailable
             else:
-                self.send(create_packet(
+                self.send(MRP.serialize(
                     PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
         elif packet.type == PacketType.ConfirmOpenConnection:
             self.state = ConnState.Send_awailable

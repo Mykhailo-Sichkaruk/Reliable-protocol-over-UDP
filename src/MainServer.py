@@ -4,7 +4,7 @@ import selectors
 from random import randint
 from typing import Any
 from connection import Conn
-from packetParser import parse_packet, MRP
+from packetParser import MRP
 from services import MSG_SEND, log
 
 
@@ -42,7 +42,7 @@ class Server:
                     # Broke packet if error rate is set
                     if self.error_rate > 0 and randint(0, self.error_rate) == 0:
                         data = self.broke_packet(data)
-                    packet = parse_packet(data)
+                    packet = MRP.deserialize(data)
                     self.dispatch_packet(packet, ip, port)
                 except IOError:
                     pass

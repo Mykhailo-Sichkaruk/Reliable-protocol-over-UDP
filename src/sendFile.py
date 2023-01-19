@@ -5,7 +5,7 @@ from enum import Enum
 from io import SEEK_END
 from typing import Any, Callable
 from initData import InitData
-from packetParser import MRP, PacketType, create_packet
+from packetParser import MRP, PacketType
 from services import MSG_SEND, log
 
 
@@ -100,7 +100,7 @@ class SendFile:
 
         self.init_last_window = window_amount - 1
         # Send init packet with the amount of windows needed to send the JSON object
-        self.send(create_packet(
+        self.send(MRP.serialize(
             PacketType.Init_file_transfer, self.id, self.window_size, self.fragment_len, self.init_last_window.to_bytes(1, "big")))
 
     def send_next_window(self):
@@ -110,7 +110,7 @@ class SendFile:
             self.handle_end_transfer()
         else:
             for i, packet in enumerate(self.send_window):
-                self.send(create_packet(PacketType.Data, self.id,
+                self.send(MRP.serialize(PacketType.Data, self.id,
                                         i, self.window_number, packet))
 
     def handle_end_transfer(self):
@@ -156,7 +156,7 @@ class SendFile:
                     is_window_full = False
                     # Resend lost packet
                     if self.send_window != None:
-                        self.send(create_packet(
+                        self.send(MRP.serialize(
                             PacketType.Data, self.id, index, self.window_number, self.send_window[index]))
 
             if is_window_full:
