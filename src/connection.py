@@ -1,10 +1,6 @@
-from collections import deque
 from enum import Enum
-import hashlib
-from multiprocessing.connection import wait
 from socket import SocketType
-import time
-from services import MSG_SEND, time_ms, log
+from services import time_ms, log
 from packetParser import MRP, PacketType, create_packet
 from receiveFile import ReceiveFile
 from sendFile import SendFile
@@ -41,7 +37,6 @@ class Conn:
         self.frame_len: int = frame_len
         self.transfers: dict[int, ReceiveFile | SendFile] = {}
         self.last_packet_time: int = time_ms()  # ms
-        self.packet_queue: deque[MRP] = deque()
         self.last_transfer_id: int = 0
         self.future_send: bool = False
         self._killed = False
@@ -61,9 +56,7 @@ class Conn:
         if time_ms() - self.last_packet_time > SENDER_KEEPALIVE_TIMEOUT:
             self.handle_timeout()
         else:
-            if self.state == ConnState.Wait_Send_Confirm:
-                self.handle_send_confirm()
-            elif self.state == ConnState.Wait_Send_awailable or self.state == ConnState.Receive_Wait_Send_awailable:
+            if self.state == ConnState.Wait_Send_awailable or self.state == ConnState.Receive_Wait_Send_awailable:
                 self.handle_wait_send_awailable()
             else:
                 delete_transfers: list[int] = []
@@ -109,10 +102,6 @@ class Conn:
             self.send(create_packet(
                 PacketType.ConfirmOpenConnection, 0, 0, 0, b""))
 
-    def handle_send_confirm(self):
-        if self.find_packet(PacketType.ConfirmInit_file_transfer) != None:
-            self.state = ConnState.Send_awailable
-
     def open_connection(self):
         # Open sending stream
         if self.state == ConnState.Disconnected:
@@ -121,11 +110,6 @@ class Conn:
             self.state = ConnState.Receive_Wait_Send_Confirm
 
         self.send(create_packet(PacketType.OpenConnection, 0, 0, 0, b""))
-
-    def find_packet(self, packet_type: PacketType):
-        for packet in self.packet_queue:
-            if packet.type == packet_type:
-                return packet
 
     def add_packet(self, packet: MRP):
         self.last_packet_time = time_ms()
