@@ -3,6 +3,9 @@ import sys
 from services import log
 from MainServer import Server
 
+MAX_WINDOW_LEN = 248
+MAX_FRAME_LEN = 2040
+
 # is windows
 if sys.platform.startswith("win"):
     default_stdin = open("CONIN$", "r")
@@ -19,15 +22,15 @@ def d_input(default: str, msg: str) -> str:
 
 def handle_commands(server: Server):
     user_input: str = ""
-    file_path: str = ""
+    file_path: str = "./src/save/big.exe"
     file_len: int = 0
     msg: str = ""
-    ip: str = "0.0.0.0"
+    ip: str = "127.0.0.1"
     port: int = 1000
     frame_len: int = 50
     window_size: int = 16
 
-    while server.is_running:
+    while True:
         try:
             user_input = input("Enter command: ").strip()
         except KeyboardInterrupt:
@@ -38,9 +41,11 @@ def handle_commands(server: Server):
 
         if user_input == "exit":
             server.close()
+            break
         elif user_input.startswith("file"):
             while True:
-                file_path = d_input(file_path, "Enter file path: ")
+                file_path = d_input(
+                    file_path, f"Enter file path ({file_path}): ")
                 if not check_file(file_path):
                     continue
 
@@ -73,6 +78,13 @@ def handle_commands(server: Server):
             ip = d_input(ip, f"Client ip ({ip}): ")
             port = int(d_input(str(port), f"Client port ({port}): "))
             server.close_connection(ip, port)
+        elif user_input.startswith("help"):
+            print("Commands:")
+            print("file - send file")
+            print("msg - send message")
+            print("close - close connection")
+        else:
+            log.error("Unknown command")
 
 
 def check_file(file_path: str) -> bool | str:
@@ -89,11 +101,11 @@ def check_file(file_path: str) -> bool | str:
 
 
 def check_values(window_size: int, fragment_len: int, file_len: int) -> bool:
-    if window_size < 1 or window_size > 248:
+    if window_size < 1 or window_size > MAX_WINDOW_LEN:
         log.error("Window size must be between 1 and 248")
         return False
-    if fragment_len < 1 or fragment_len > 1016:
-        log.error("Frame length must be between 1 and 1016")
+    if fragment_len < 1 or fragment_len > MAX_FRAME_LEN:
+        log.error(f"Frame length must be between 1 and {MAX_FRAME_LEN}")
         return False
     # Check if window size divides 8
     if window_size % 8 != 0:

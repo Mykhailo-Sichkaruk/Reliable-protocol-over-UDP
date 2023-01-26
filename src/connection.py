@@ -45,12 +45,10 @@ class Conn:
 
     def run(self) -> bool:
         if self._killed:
-            log.error(f"Summ header: {self.summ_header}")
             return False
 
         # Check for timeout
         if self.state == ConnState.Disconnected and not self.future_send:
-            log.error(f"Summ header: {self.summ_header}")
             return False
 
         if time_ms() - self.last_packet_time > SENDER_KEEPALIVE_TIMEOUT:
@@ -114,10 +112,6 @@ class Conn:
     def add_packet(self, packet: MRP):
         self.last_packet_time = time_ms()
 
-        if not packet.unbroken:
-            log.warn("Packet is broken")
-            return
-
         self.summ_header += 8
         if packet.type == PacketType.OpenConnection:
             if self.state == ConnState.Disconnected:
@@ -144,9 +138,9 @@ class Conn:
 
     def dispatch_packet(self, packet: MRP):
         if packet.file_id not in self.transfers:
+            # TODO: Ask user if he wants to receive this file
             self.transfers[packet.file_id] = ReceiveFile(self.destination,
                                                          self.send, packet)
-            log.info(f"New transfer {packet.file_id} started <<<")
             self.last_transfer_id += 1
         else:
             self.transfers[packet.file_id].add_packet(packet)
@@ -172,6 +166,7 @@ class Conn:
             transfer.close()
         self.state = ConnState.Disconnected
         self._killed = True
+
         log.warn(
             f"Forced close connection with {self.destination[0]}:{self.destination[1]}")
 
