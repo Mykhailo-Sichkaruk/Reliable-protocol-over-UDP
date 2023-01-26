@@ -26,7 +26,6 @@ class SendFile:
         self.fragment_len = fragment_len
         self.state = SendState.Wait_init_confirm
         self.send_window: list[bytes] | None = []
-        self.receive_window: list[bytes] = []
         self.window_number = 0
         self.init_data: bytes = b''
         self.init_last_window = 0
@@ -99,14 +98,14 @@ class SendFile:
             raise ValueError("Too many windows needed to send init data")
 
         self.init_last_window = window_amount - 1
-        # Send init packet with the amount of windows needed to send the JSON object
+        # Send init packet with the amount of windows needed to send the InitData structure
         self.send(MRP.serialize(
             PacketType.Init_file_transfer, self.id, self.window_size, self.fragment_len, self.init_last_window.to_bytes(1, "big")))
 
     def send_next_window(self):
         # Update window
         self.send_window = self.get_window()
-        if self.send_window == None:
+        if self.send_window is None:
             self.handle_end_transfer()
         else:
             for i, packet in enumerate(self.send_window):
@@ -121,7 +120,7 @@ class SendFile:
                                 \tFragment size: {self.fragment_len}\n\
                                 \tWindow size: {self.window_size}\n\
                                 \tMD5 hash: {self.md5_hash.hex()}\n\n\
-                                \tFile size: {self.__file_size}")
+                                \tFile size: {self.__file_size}B")
         else:
             os.remove(self.file_path)
 
@@ -155,7 +154,7 @@ class SendFile:
                 if (bit & confirm_int) == 0:
                     is_window_full = False
                     # Resend lost packet
-                    if self.send_window != None:
+                    if self.send_window is not None:
                         self.send(MRP.serialize(
                             PacketType.Data, self.id, index, self.window_number, self.send_window[index]))
 
