@@ -140,8 +140,8 @@ class ReceiveFile:
         # Check if the window is correct
         for i in range(self.window_size):
             if self.window[i].number_in_window != i:
-                raise RuntimeError(
-                    f"Window is not correct {self.window_number} {i}!={self.window[i].number_in_window}")
+                self.window.clear()
+                return
 
         # Write the data to the file
         for packet in self.window:
