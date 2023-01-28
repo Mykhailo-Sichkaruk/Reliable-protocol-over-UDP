@@ -14,7 +14,6 @@ class InitData(TypedDict):
     sha256: str
 
 
-WINDOW_TIMEOUT = 200  # ms
 CONFIRM_RESEND_TIMEOUT = 5000  # ms
 TRANSFER_TIMEOUT = 10000  # ms
 
@@ -43,6 +42,7 @@ class ReceiveFile:
         self.start_time: int = 0
         self.last_window_confirm: bytes = b""
         self.confirm_resend_time: int = 0
+        self.WINDOW_TIMEOUT: int = 100
 
         if packet is not None:
             self.start_time = time_ms()
@@ -51,12 +51,12 @@ class ReceiveFile:
 
     def run(self):
         if (self.state == ReceiveState.Wait_window
-                and self.last_packet_time + WINDOW_TIMEOUT < time_ms()):
+                and self.last_packet_time + self.WINDOW_TIMEOUT < time_ms()):
             if self.received_bytes < self.file_len:
                 # Resend the last window
                 if time_ms() - self.last_packet_time > TRANSFER_TIMEOUT:
                     self.handle_error_transfer()
-                elif time_ms() - self.confirm_resend_time > WINDOW_TIMEOUT:
+                elif time_ms() - self.confirm_resend_time > self.WINDOW_TIMEOUT:
                     self.confirm_resend_time = time_ms()
                     self.handle_lost_packets()
             else:
@@ -67,10 +67,10 @@ class ReceiveFile:
     def handle_error_transfer(self):
         if self.file_path.endswith(MSG_RECV):
             log.warn(
-                f"Message transfer failed <- {self.destination[0]}:{self.destination[1]}")
+                f"Message transfer failed <- {self.destination[0]}:{self.destination[1]}\n")
         else:
             log.warn(
-                f"{self.file_path} Receiving failed, host timed out <- {self.destination[0]}:{self.destination[1]} ")
+                f"{self.file_path} Receiving failed, host timed out <- {self.destination[0]}:{self.destination[1]}\n")
         self.state = ReceiveState.End_transfer
         self.file.close()
         os.remove(self.file_path)
@@ -88,13 +88,13 @@ class ReceiveFile:
             self.file.close()
             os.remove(self.file_path)
             log.critical(
-                f"{self.destination[0]}:{self.destination[1]} <<<< {msg}")
+                f"{self.destination[0]}:{self.destination[1]} <<<< {msg}\n")
         else:
             if self.file_len > self.received_bytes:
                 self.handle_error_transfer()
                 return
             log.critical(
-                f"File received successfully <- {self.destination[0]}:{self.destination[1]}\n\
+                f"\nFile received successfully <- {self.destination[0]}:{self.destination[1]}\n\
                     \tFile: {self.file_path} \n\
                     \tFragment size: {self.fragment_len} B \n\
                     \tWindow size: {self.window_size} \n\
@@ -104,7 +104,7 @@ class ReceiveFile:
                     \tSHA256 received: {sha256} \n\
                     \tTime: {int((time_ms() - self.start_time) / 1000)}s \n\
                     \tFile size: {self.file_len} B \n\
-                    \tAverage speed {int(self.file_len / (end_time - self.start_time)) } KiB/s")
+                    \tAverage speed {int(self.file_len / (end_time - self.start_time)) } KiB/s\n")
             self.file.close()
 
         self.state = ReceiveState.End_transfer
@@ -188,7 +188,7 @@ class ReceiveFile:
             self.send(MRP.serialize(PacketType.ConfirmData,
                       self.id, 0, self.window_number - 1, self.last_window_confirm))
             log.critical(
-                f"F:{self.id} W:{self.window_number} Resend confirm <- {self.destination[0]}:{self.destination[1]}")
+                f"F:{self.id} W:{self.window_number} Resend confirm <- {self.destination[0]}:{self.destination[1]}\n")
         else:
             self.window.sort(key=lambda packet: packet.number_in_window)
             payload = self.get_sum_confirm()
@@ -210,9 +210,14 @@ class ReceiveFile:
         if self.state == ReceiveState.Wait_init and packet.type == PacketType.Init_file_transfer:
             self.init_data_end_window = int.from_bytes(
                 packet.payload, "big")
-            self.id = packet.file_id
+            self.id = packet.transfer_id
             self.window_size = packet.number_in_window
             self.fragment_len = packet.window_number
+            self.WINDOW_TIMEOUT = (
+                self.window_size * self.fragment_len**2) // 700000
+            if self.WINDOW_TIMEOUT < 100:
+                self.WINDOW_TIMEOUT = 100
+            log.warn(f"Window timeout: {self.WINDOW_TIMEOUT}\n")
             self.state = ReceiveState.Wait_window
             self.send(MRP.serialize(
                 PacketType.ConfirmInit_file_transfer, self.id, 0, 0, b""))
@@ -244,7 +249,7 @@ class ReceiveFile:
         if self.file_len > self.received_bytes:
             self.handle_error_transfer()
         else:
-            log.warn(f"File transfer complete {self.file_path}")
+            log.warn(f"File transfer complete {self.file_path}\n")
         self.file.close()
         self.state = ReceiveState.End_transfer
         self.last_packet_time = time_ms()

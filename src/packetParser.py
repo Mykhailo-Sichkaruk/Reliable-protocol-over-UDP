@@ -1,3 +1,4 @@
+from random import randint
 from zlib import crc32
 from dataclasses import dataclass
 from enum import Enum
@@ -17,13 +18,11 @@ class PacketType(Enum):
 class MRP:
     """Mykhailo's reliable protocol"""
     type: PacketType
-    file_id: int
+    transfer_id: int
     number_in_window: int
-    """Number of the packet inside the window from 0 to window_size - 1"""
+    """Number of the packet inside the window from `0` to `window_size - 1`"""
     window_number: int
-    checksum: int
     payload: bytes
-    unbroken: bool
 
     @staticmethod
     def deserialize(data: bytes):
@@ -31,11 +30,9 @@ class MRP:
         packet_type, file_id = MRP.parse_first_byte(data[0])
         packet_number_in_window = data[1]
         window_number = int.from_bytes(data[2:4], "big")
-        checksum = int.from_bytes(data[4:8], "big")
         payload = data[8:]
-        unbroken = MRP.check_checksum(data)
 
-        return MRP(packet_type, file_id, packet_number_in_window, window_number, checksum, payload, unbroken)
+        return MRP(packet_type, file_id, packet_number_in_window, window_number, payload)
 
     @staticmethod
     def parse_first_byte(data: int) -> tuple[PacketType, int]:
@@ -64,3 +61,12 @@ class MRP:
                          packet_window_number + payload).to_bytes(4, "big")
 
         return bytes([first_byte]) + packet_number_in_window + packet_window_number + checksum + payload
+
+    @staticmethod
+    def broke_packet(data: bytes):
+        # Change any byte in the packet
+        random_index = randint(0, len(data) - 1)
+        bytearray_data = bytearray(data)
+        bytearray_data[random_index] = randint(0, 255)
+
+        return bytes(bytearray_data)

@@ -32,8 +32,18 @@ def sha256_file(file_path: str) -> str:
         return hasher.hexdigest()
 
 
+def getLogger(name, fmt="[%(asctime)s]%(name)s<%(levelname)s>%(message)s",
+              terminator='\n'):
+    logger = logging.getLogger(name)
+    cHandle = logging.StreamHandler()
+    cHandle.terminator = terminator
+    cHandle.setFormatter(logging.Formatter(fmt=fmt, datefmt="%H:%M:%S"))
+    logger.addHandler(cHandle)
+    return logger
+
+
 formatter: colorlog.ColoredFormatter = colorlog.ColoredFormatter(
-    fmt="%(log_color)-8s%(reset)s %(log_color)s%(message)s%(reset)s",
+    fmt="\r%(log_color)-8s%(reset)s %(log_color)s%(message)s%(reset)s\r",
     log_colors={
         'DEBUG':    'white',
         'INFO':     'cyan',
@@ -52,11 +62,14 @@ formatter: colorlog.ColoredFormatter = colorlog.ColoredFormatter(
 
     },
     style='%',
+    reset=True,
 )
 handler = colorlog.StreamHandler()
 handler.setFormatter(formatter)
+handler.terminator = '\r'
 
 colorlog.getLogger('').addHandler(handler)
+
 global log
 log = colorlog.getLogger(__name__)
 log.setLevel('DEBUG')

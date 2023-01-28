@@ -49,13 +49,13 @@ class SendFile:
             self.send_file_init()
             if self.file_path != MSG_SEND:
                 log.info(
-                    f"Sending file:{self.id} {self.file_path}: {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
+                    f"Sending file:{self.id} {self.file_path}: {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}\n")
             else:
                 log.info(
-                    f"Send msg with size {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}")
+                    f"Send msg with size {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}\n")
 
         except Exception as e:
-            log.error(f"Error opening file: {e}")
+            log.error(f"Error opening file: {e}\n")
             self.state = SendState.End_transfer
 
     def get_window(self):
@@ -120,7 +120,7 @@ class SendFile:
                                 \tFragment size: {self.fragment_len}\n\
                                 \tWindow size: {self.window_size}\n\
                                 \tMD5 hash: {self.md5_hash.hex()}\n\n\
-                                \tFile size: {self.__file_size}B")
+                                \tFile size: {self.__file_size}B\n")
         else:
             os.remove(self.file_path)
 

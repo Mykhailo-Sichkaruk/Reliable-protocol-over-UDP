@@ -20,7 +20,7 @@ class Server:
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.socket, selectors.EVENT_READ, data=None)
 
-        log.warn(f"Server started on {self.socket.getsockname()}")
+        log.critical(f"Server started on {self.socket.getsockname()}\n")
 
     def start(self):
         while True:
@@ -79,7 +79,7 @@ class Server:
         for _, connection in self.connections.items():
             connection.kill()
 
-        log.warn(f"!Server closed")
+        log.critical(f"Server closed\n")
         self.socket.close()
         self.selector.close()
         self._is_running = False

@@ -40,8 +40,7 @@ class Conn:
         self.last_transfer_id: int = 0
         self.future_send: bool = False
         self._killed = False
-        self.summ_header: int = 0
-        log.critical(f"Connection created with {ip}:{port}")
+        log.critical(f"Connection created with {ip}:{port}\n")
 
     def run(self) -> bool:
         if self._killed:
@@ -71,7 +70,7 @@ class Conn:
     def handle_timeout(self):
         if self.state == ConnState.Send_awailable or self.state == ConnState.Send_Receive_awailable:
             log.info(
-                f"{self.destination[0]}:{self.destination[1]}  Long time no see, may I continue sending?")
+                f"{self.destination[0]}:{self.destination[1]}  Long time no see, may I continue sending?\n")
             self.last_packet_time = time_ms()
             self.send(MRP.serialize(
                 PacketType.OpenConnection, 0, 0, 0, b""))
@@ -80,18 +79,18 @@ class Conn:
             else:
                 self.state = ConnState.Receive_Wait_Send_Confirm
         elif self.state == ConnState.Wait_Send_Confirm or self.state == ConnState.Receive_Wait_Send_Confirm:
-            log.info(f"Disconnected from {self.destination} by timeout")
+            log.info(f"Disconnected from {self.destination} by timeout\n")
             self.state = ConnState.Disconnected
             return False
         elif self.state == ConnState.Receive_awailable or self.state == ConnState.Receive_Wait_Send_awailable:
             if self.last_packet_time + RECEIVED_KEEP_ALIVE_TIMEOUT < time_ms():
                 if self.state == ConnState.Receive_awailable:
                     log.warn(
-                        f"{self.destination[0]}:{self.destination[1]} Sender is not interested in sending, closing...")
+                        f"{self.destination[0]}:{self.destination[1]} Sender is not interested in sending, closing...\n")
                     self.state = ConnState.Disconnected
                 else:
                     log.warn(
-                        f"{self.destination[0]}:{self.destination[1]} Sender is not interested in sending, but can receive")
+                        f"{self.destination[0]}:{self.destination[1]} Sender is not interested in sending, but can receive\n")
                     self.state = ConnState.Wait_Send_awailable
 
     def handle_wait_send_awailable(self):
@@ -112,7 +111,6 @@ class Conn:
     def add_packet(self, packet: MRP):
         self.last_packet_time = time_ms()
 
-        self.summ_header += 8
         if packet.type == PacketType.OpenConnection:
             if self.state == ConnState.Disconnected:
                 self.send(MRP.serialize(
@@ -137,13 +135,13 @@ class Conn:
                 f"Packet {packet.type} received in state {self.state}")
 
     def dispatch_packet(self, packet: MRP):
-        if packet.file_id not in self.transfers:
+        if packet.transfer_id not in self.transfers:
             # TODO: Ask user if he wants to receive this file
-            self.transfers[packet.file_id] = ReceiveFile(self.destination,
-                                                         self.send, packet)
+            self.transfers[packet.transfer_id] = ReceiveFile(self.destination,
+                                                             self.send, packet)
             self.last_transfer_id += 1
         else:
-            self.transfers[packet.file_id].add_packet(packet)
+            self.transfers[packet.transfer_id].add_packet(packet)
 
     def send(self, data: bytes):
         self.socket.sendto(data, self.destination)
@@ -158,7 +156,6 @@ class Conn:
             self.transfers[self.last_transfer_id] = SendFile(self.destination,
                                                              self.last_transfer_id, self.send, file_path, window_len, frame_len)
 
-        log.info(f"File transfer {self.last_transfer_id} started >>>")
         self.last_transfer_id += 1
 
     def kill(self):
@@ -168,7 +165,7 @@ class Conn:
         self._killed = True
 
         log.warn(
-            f"Forced close connection with {self.destination[0]}:{self.destination[1]}")
+            f"Forced close connection with {self.destination[0]}:{self.destination[1]}\n")
 
     def close(self):
         for transfer in self.transfers.values():

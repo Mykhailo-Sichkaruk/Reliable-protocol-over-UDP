@@ -5,9 +5,9 @@ import os
 class InitData:
     """Class for creating the init data for the file transfer
 
-    file_len:  8B,      Length of the file in bytes
-    md5_hash:  16B,     MD5 hash of the file
-    file_path: 0-255B   Path of the file
+    `file_len:  8B    ` -   Length of the file in bytes
+    `md5_hash:  16B   ` -   MD5 hash of the file
+    `file_path: 0-255B` -   Path of the file
     """
 
     def __init__(self, file_path: str) -> None:
@@ -40,7 +40,7 @@ class InitData:
         data += self.file_length.to_bytes(8, "big")
         data += self.__md5
         data += self.__sha256
-        data += bytes(self.file_path, "utf-8")
+        data += bytes(self.file_path, encoding="utf-8")
 
         self.__len = len(data)
         return data
