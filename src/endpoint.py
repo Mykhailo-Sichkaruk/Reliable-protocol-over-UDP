@@ -11,9 +11,7 @@ while True:
     try:
         ip = input("Enter server ip (127.0.0.1): ") or "127.0.0.1"
         port = int(input("Enter server port (1000): ") or 0) or 1000
-        error_rate = int(
-            input("1 error will be simulated for N packets (0): ") or 0) or 0
-        server = Server(ip, port, error_rate)
+        server = Server(ip, port, 0)
         break
     except Exception as e:
         services.log.error(e)

@@ -2,10 +2,11 @@ import socket
 import selectors
 
 from random import randint
+from tempfile import NamedTemporaryFile
 from typing import Any
 from connection import Conn
 from packetParser import MRP
-from services import MSG_SEND, log
+from services import log
 
 
 class Server:
@@ -61,10 +62,11 @@ class Server:
 
     def send_message(self, msg: str, ip: str, port: int, window_len: int = 64, frame_len: int = 500):
         # Create file with message
-        msg_file = open(MSG_SEND, "wb")
-        msg_file.write(bytes(msg, "utf-8"))
-        msg_file.close()
-        self.send_file(MSG_SEND, ip, port, window_len, frame_len)
+        temp_file = NamedTemporaryFile(mode="w+", suffix=".msg", delete=False)
+        temp_file.write(msg)
+        temp_file.close()
+        log.warn(f"{temp_file.name} created\n")
+        self.send_file(temp_file.name, ip, port, window_len, frame_len)
 
     def dispatch_packet(self, packet: MRP, ip: str, port: int):
         if self.connections.get(f"{ip}:{port}", None) is None:

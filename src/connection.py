@@ -147,16 +147,26 @@ class Conn:
         self.socket.sendto(data, self.destination)
 
     def send_file(self, file_path: str, frame_len: int, window_len: int):
+        free_id: int | None = self.get_id()
+        if free_id is None:
+            log.error("No free id for transfer")
+            return False
+
         if self.state == ConnState.Send_awailable or self.state == ConnState.Send_Receive_awailable:
-            self.transfers[self.last_transfer_id] = SendFile(self.destination,
-                                                             self.last_transfer_id, self.send, file_path, window_len, frame_len)
+            self.transfers[free_id] = SendFile(self.destination,
+                                               free_id, self.send, file_path, window_len, frame_len)
         else:
             self.open_connection()
             self.future_send = True
-            self.transfers[self.last_transfer_id] = SendFile(self.destination,
-                                                             self.last_transfer_id, self.send, file_path, window_len, frame_len)
+            self.transfers[free_id] = SendFile(self.destination,
+                                               free_id, self.send, file_path, window_len, frame_len)
+        return True
 
-        self.last_transfer_id += 1
+    def get_id(self) -> int | None:
+        # Return free id for transfer (0-15)
+        for i in range(16):
+            if i not in self.transfers:
+                return i
 
     def kill(self):
         for transfer in self.transfers.values():

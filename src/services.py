@@ -21,7 +21,7 @@ def md5_file(file_path: str) -> str:
         return hasher.hexdigest()
 
 
-def sha256_file(file_path: str) -> str:
+def sha256_file(file_path: str) -> bytes:
     BLOCKSIZE = 65536
     hasher = hashlib.sha256()
     with open(file_path, 'rb') as afile:
@@ -29,21 +29,11 @@ def sha256_file(file_path: str) -> str:
         while len(buf) > 0:
             hasher.update(buf)
             buf = afile.read(BLOCKSIZE)
-        return hasher.hexdigest()
-
-
-def getLogger(name, fmt="[%(asctime)s]%(name)s<%(levelname)s>%(message)s",
-              terminator='\n'):
-    logger = logging.getLogger(name)
-    cHandle = logging.StreamHandler()
-    cHandle.terminator = terminator
-    cHandle.setFormatter(logging.Formatter(fmt=fmt, datefmt="%H:%M:%S"))
-    logger.addHandler(cHandle)
-    return logger
+        return hasher.digest()
 
 
 formatter: colorlog.ColoredFormatter = colorlog.ColoredFormatter(
-    fmt="\r%(log_color)-8s%(reset)s %(log_color)s%(message)s%(reset)s\r",
+    fmt="\x1b[2K%(log_color)-8s%(reset)s %(log_color)s%(message)s%(reset)s\r",
     log_colors={
         'DEBUG':    'white',
         'INFO':     'cyan',
