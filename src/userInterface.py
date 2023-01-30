@@ -1,7 +1,9 @@
+import os
 import sys
 
 from services import log
 from MainServer import Server
+from packetParser import MAX_WINDOW_NUMBER
 
 MAX_WINDOW_LEN = 248
 MAX_FRAME_LEN = 2040
@@ -21,6 +23,8 @@ def d_input(default: str, msg: str) -> str:
 
 
 def handle_commands(server: Server):
+    # Exit if user press CTRL-C
+
     user_input: str = ""
     file_path: str = "./src/save/big.exe"
     file_len: int = 0
@@ -50,7 +54,7 @@ def handle_commands(server: Server):
                     continue
 
                 file = open(file_path, "rb")
-                file_len = len(file.read())
+                file_len = os.path.getsize(file_path)
                 log.info(f"File size: {file_len}B")
                 file.close()
                 break
@@ -69,10 +73,8 @@ def handle_commands(server: Server):
             msg = input("Enter message: ")
             ip = d_input(ip, f"Client ip ({ip}): ")
             port = int(d_input(str(port), f"Client port ({port}): "))
-            window_size = int(
-                d_input(str(window_size), f"Window size ({window_size}): "))
-            frame_len = int(
-                d_input(str(frame_len), f"Frame length ({frame_len}): "))
+            window_size = 16
+            frame_len = 50
             server.send_message(msg, ip, port, window_size, frame_len)
         elif user_input.startswith("close"):
             ip = d_input(ip, f"Client ip ({ip}): ")
@@ -90,7 +92,7 @@ def handle_commands(server: Server):
 def check_file(file_path: str) -> bool | str:
     try:
         with open(file_path, "rb") as f:
-            f.read()
+            f.read(1)
     except FileNotFoundError:
         log.error("File not found")
         return False
@@ -114,10 +116,10 @@ def check_values(window_size: int, fragment_len: int, file_len: int) -> bool:
     if window_size > fragment_len * 8:
         log.error("Window size must be less than frame length * 8")
         return False
-    if (file_len / (fragment_len * window_size)) > 65535:
+    if (file_len / (fragment_len * window_size)) > MAX_WINDOW_NUMBER:
         log.error(
-            f"Too small frame length or window size for file with size:                {file_len} B")
+            f"Too small frame length or window size for file with size:                {file_len} B\n")
         log.error(
-            f"With current values, max file size is: frame len * window size * 65535 = {fragment_len * window_size * 65535} B")
+            f"With current values, max file size is: frame len * window size * {MAX_WINDOW_NUMBER} = {fragment_len * window_size * 65535} B\n")
         return False
     return True

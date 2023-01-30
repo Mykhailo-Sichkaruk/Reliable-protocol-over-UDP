@@ -10,17 +10,6 @@ def time_ms() -> int:
     return int(time() * 1000)
 
 
-def md5_file(file_path: str) -> str:
-    BLOCKSIZE = 65536
-    hasher = hashlib.md5()
-    with open(file_path, 'rb') as afile:
-        buf = afile.read(BLOCKSIZE)
-        while len(buf) > 0:
-            hasher.update(buf)
-            buf = afile.read(BLOCKSIZE)
-        return hasher.hexdigest()
-
-
 def sha256_file(file_path: str) -> bytes:
     BLOCKSIZE = 65536
     hasher = hashlib.sha256()

@@ -12,8 +12,8 @@ from services import log
 class Server:
     def __init__(self, host: str | None = None, port: int = 0, error_rate: int = 0):
         self.connections: dict[str, Conn] = {}
-        self.port = port
-        self.host = host
+        self.port: int = port
+        self.host: str | None = host
         self.error_rate = error_rate
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind((host, port))
@@ -31,7 +31,7 @@ class Server:
                 events = []
             for key, _ in events:
                 try:
-                    data, (ip, port) = key.fileobj.recvfrom(2048)
+                    data, (ip, port) = key.fileobj.recvfrom(1500)
                     # Broke packet if error rate is set
                     # if self.error_rate > 0 and randint(0, self.error_rate) == 0:
                     #     data = MRP.broke_packet(data)
