@@ -2,9 +2,8 @@ import os
 
 from math import ceil
 from enum import Enum
-from io import SEEK_END
 from typing import Any, Callable
-from initData import InitData
+from fileData import FileData
 from packetParser import MRP, PacketType
 from services import MSG_SEND, log
 
@@ -19,20 +18,19 @@ class SendState(Enum):
 
 class SendFile:
     def __init__(self, destination: tuple[str, int], id: int, send: Callable[[bytes], None], file_path: str, window_size: int = 64, fragment_len: int = 100) -> None:
-        self.destination = destination
-        self.id = id
-        self.file_path = file_path
-        self.window_size = window_size
-        self.fragment_len = fragment_len
-        self.state = SendState.Wait_init_confirm
+        self.dst = f"{destination[0]}:{destination[1]}"
+        self.id: int = id
+        self.path: str = file_path
+        self.window_size: int = window_size
+        self.fragment_len: int = fragment_len
+        self.send: Callable[[bytes], None] = send
+        self.state: SendState = SendState.Wait_init_confirm
         self.send_window: list[bytes] | None = []
         self.window_number = 0
-        self.init_data: bytes = b''
         self.init_last_window = 0
-        self.send = send
         self.is_inited: bool = False
-        self.md5_hash: bytes
         self.file: Any
+        self.file_data: FileData
 
     def run(self):
         if not self.is_inited:
@@ -43,16 +41,18 @@ class SendFile:
 
     def init(self):
         try:
-            self.file = open(self.file_path, "rb")
-            self.__file_size = self.file.seek(0, SEEK_END)
-            self.file.seek(0)
-            self.send_file_init()
-            if self.file_path != MSG_SEND:
+            if self.path.endswith(".msg"):
+                self.file = open(self.path, "rb")
+                self.__size = os.path.getsize(self.path)
                 log.info(
-                    f"Sending file:{self.id} {self.file_path}: {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}\n")
+                    f"Send msg with size {self.__size} bytes -> {self.dst}\n")
             else:
+                self.file = open(self.path, "rb")
+                self.__size = os.path.getsize(self.path)
                 log.info(
-                    f"Send msg with size {self.__file_size} bytes -> {self.destination[0]}:{self.destination[1]}\n")
+                    f"Sending file:{self.id} {self.path}: {self.__size} bytes -> {self.dst}\n")
+
+            self.send_file_init()
 
         except Exception as e:
             log.error(f"Error opening file: {e}\n")
@@ -64,7 +64,7 @@ class SendFile:
             # Send init data
             window_start = self.window_number * self.window_size * self.fragment_len
             window_end = window_start + self.window_size * self.fragment_len
-            init_window = self.init_data[window_start:window_end]
+            init_window = self.file_data.raw[window_start:window_end]
             current_window: list[bytes] = []
             for i in range(0, len(init_window), self.fragment_len):
                 current_window.append(init_window[i:i+self.fragment_len])
@@ -74,7 +74,7 @@ class SendFile:
                     current_window.append(b'')
 
             return current_window
-        elif self.file.tell() != self.__file_size:
+        elif self.file.tell() != self.__size:
             result = [self.file.read(self.fragment_len)
                       for _ in range(self.window_size)]
 
@@ -82,11 +82,8 @@ class SendFile:
 
     def send_file_init(self):
         # Get the init data
-        init_data: InitData = InitData(self.file_path)
-        self.md5_hash = init_data.md5_hash
-        self.init_data = init_data.bytes
-
-        self.send_init(len(init_data))
+        self.file_data = FileData(path=self.path)
+        self.send_init(len(self.file_data))
 
     def send_init(self, init_data_len: int):
         # Whole number of packets needed to send the JSON object
@@ -114,15 +111,15 @@ class SendFile:
 
     def handle_end_transfer(self):
         self.file.close()
-        if self.file_path != MSG_SEND:
-            log.critical(f"File sent successfully -> {self.destination[0]}:{self.destination[1]}\n\
-                                \tFile: {self.file_path}\n\
+        if self.path != MSG_SEND:
+            log.critical(f"File sent successfully -> {self.dst}\n\
+                                \tFile: {self.path}\n\
                                 \tFragment size: {self.fragment_len}\n\
                                 \tWindow size: {self.window_size}\n\
-                                \tMD5 hash: {self.md5_hash.hex()}\n\n\
-                                \tFile size: {self.__file_size}B\n")
+                                \tSHA256 hash: {self.file_data.hash}\n\n\
+                                \tFile size: {self.__size}B\n")
         else:
-            os.remove(self.file_path)
+            os.remove(self.path)
 
         self.state = SendState.End_transfer
 
@@ -164,7 +161,7 @@ class SendFile:
                 self.send_next_window()
             else:
                 log.info(
-                    f"F:{self.id} W:{self.window_number} resend some packets -> {self.destination[0]}:{self.destination[1]}")
+                    f"F:{self.id} W:{self.window_number} resend some packets -> {self.dst}")
 
     def close(self):
         self.file.close()
